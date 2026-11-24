@@ -515,6 +515,10 @@ class MediaSearchModal extends Modal {
             const omdbType = kind === "movie" ? "movie" : kind === "series" ? "series" : undefined;
             const response = await new OMDbProvider(key).search(query, 1, omdbType);
             for (const item of response.Search ?? []) {
+              if (item.Type === "episode") continue;
+              if (kind === "movie" && item.Type !== "movie") continue;
+              if (kind === "series" && item.Type !== "series") continue;
+              if (this.plugin.settings.sfwFilter && isExplicitAdultContent({ filmId: 0, nameRu: item.Title })) continue;
               const year = Number(item.Year.match(/\d{4}/)?.[0] ?? 0);
               items.push({
                 source: "omdb",
