@@ -465,7 +465,7 @@ class MediaSearchModal extends Modal {
     const kpCountries = (details.countries ?? []).map((x) => x.country).filter(Boolean);
     const omdbGenres = splitList(omdbDetails?.Genre ?? "");
     const omdbCountries = splitList(omdbDetails?.Country ?? "");
-    const omdbYear = omdbDetails?.Year?.match(/\\d{4}/)?.[0] ?? "";
+    const omdbYear = omdbDetails?.Year?.match(/\d{4}/)?.[0] ?? "";
     const sourceLabel = (label: string, fromOmdb: boolean): string =>
       fromOmdb ? `${label} · OMDb` : `${label} · Kinopoisk`;
 
@@ -704,7 +704,7 @@ function buildRatings(details: KinopoiskDetails, omdbDetails?: OMDbDetails): Med
 
 function parseRatingNumber(value?: string): number | undefined {
   if (!value || value === "N/A") return undefined;
-  const match = value.match(/\\d+(?:\\.\\d+)?/);
+  const match = value.match(/\d+(?:\.\d+)?/);
   if (!match) return undefined;
   const parsed = Number(match[0]);
   return Number.isFinite(parsed) ? parsed : undefined;
