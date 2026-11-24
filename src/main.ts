@@ -491,7 +491,8 @@ class MediaSearchModal extends Modal {
         }
       }
 
-      const ratings = buildRatings(details);\n      const properties: Record<string, string | number | string[] | Array<{ source: string; value: number; votes?: number; url?: string }>> = {
+      const ratings = buildRatings(details);
+      const properties: Record<string, string | number | string[] | Array<{ source: string; value: number; votes?: number; url?: string }>> = {
         type: formatMediaType(details.type),
         kinopoisk_id: Number(read("kinopoiskId")) || details.kinopoiskId,
       };
@@ -509,7 +510,8 @@ class MediaSearchModal extends Modal {
       if (countries.length) properties.countries = countries;
       if (Number.isFinite(kpRating) && read("ratingKinopoisk") !== "") properties.rating_kinopoisk = kpRating;
       if (Number.isFinite(imdbRating) && read("ratingImdb") !== "") properties.rating_imdb = imdbRating;
-      if (imdbId) properties.imdb_id = imdbId;\n      if (ratings.length) properties.ratings = ratings;
+      if (imdbId) properties.imdb_id = imdbId;
+      if (ratings.length) properties.ratings = ratings;
       if (localPosterPath) properties.poster = localPosterPath;
 
       const frontmatter = Object.entries(properties)
@@ -520,7 +522,8 @@ class MediaSearchModal extends Modal {
         localPosterPath ? `![[${localPosterPath}]]` : "",
         read("description"),
         "",
-        details.webUrl ? `[Kinopoisk](${details.webUrl})` : "",\n        ratings.length ? [ "", "<!-- biblioteka:ratings:start -->", "## Ratings", "", renderRatingsTable(ratings), "<!-- biblioteka:ratings:end -->" ].join("\\n") : "",
+        details.webUrl ? `[Kinopoisk](${details.webUrl})` : "",
+        ratings.length ? [ "", "<!-- biblioteka:ratings:start -->", "## Ratings", "", renderRatingsTable(ratings), "<!-- biblioteka:ratings:end -->" ].join("\n") : "",
       ].filter((line, index, array) => line !== "" || (index > 0 && array[index - 1] !== "")).join("\n");
       const content = `---\n${frontmatter}\n---\n\n${body.trim()}\n`;
 
@@ -596,7 +599,7 @@ function renderRatingsTable(ratings: MediaRating[]): string {
     "| Source | Rating | Votes |",
     "|---|---:|---:|",
     ...rows,
-  ].join("\\n");
+  ].join("\n");
 }
 
 function escapeMarkdownTable(value: string): string {
