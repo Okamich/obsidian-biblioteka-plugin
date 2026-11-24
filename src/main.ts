@@ -56,6 +56,11 @@ export default class BibliotekaPlugin extends Plugin {
   }
 
   private async refreshRatings(): Promise<void> {
+    if (!this.settings.kinopoiskApiKey.trim()) {
+      new Notice("Add your Kinopoisk API key in Biblioteka settings first.");
+      return;
+    }
+
     const files = this.app.vault.getMarkdownFiles();
     const targets = files.filter((file) => {
       const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
@@ -597,7 +602,8 @@ function renderRatingsTable(ratings: MediaRating[]): string {
 function escapeMarkdownTable(value: string): string {
   return value.replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
 }
-\ninterface DuplicateMatch {
+
+interface DuplicateMatch {
   file: TFile;
   reason: string;
 }
