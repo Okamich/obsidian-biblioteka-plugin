@@ -9,6 +9,7 @@ import {
 import {
   KinopoiskProvider,
   KinopoiskSearchItem,
+  KinopoiskDetails,
   MediaKind,
 } from "./providers/kinopoisk";
 
@@ -150,6 +151,7 @@ class BibliotekaSettingTab extends PluginSettingTab {
 class MediaSearchModal extends Modal {
   private readonly plugin: BibliotekaPlugin;
   private resultsEl: HTMLElement;
+  private controlsEl: HTMLElement;
   private queryInput: HTMLInputElement;
   private kindSelect: HTMLSelectElement;
   private searchButton: HTMLButtonElement;
@@ -170,7 +172,8 @@ class MediaSearchModal extends Modal {
       cls: "biblioteka-muted",
     });
 
-    const controls = contentEl.createDiv({ cls: "biblioteka-search-controls" });
+    this.controlsEl = contentEl.createDiv({ cls: "biblioteka-search-controls" });
+    const controls = this.controlsEl;
     this.queryInput = controls.createEl("input", {
       attr: { type: "search", placeholder: "Enter a title…" },
     });
@@ -278,10 +281,88 @@ class MediaSearchModal extends Modal {
       text: "Select",
       cls: "biblioteka-result-select",
     });
-    selectButton.addEventListener("click", () => {
-      new Notice(
-        `Selected: ${item.nameRu || item.nameEn || "Untitled"} (Kinopoisk ID: ${item.filmId}). Note creation is the next development step.`,
-      );
+    selectButton.addEventListener("click", () => void this.openPreview(item, selectButton));
+  }
+
+  private async openPreview(
+    item: KinopoiskSearchItem,
+    selectButton: HTMLButtonElement,
+  ): Promise<void> {
+    selectButton.disabled = true;
+    selectButton.setText("Loading…");
+
+    try {
+      const provider = new KinopoiskProvider(this.plugin.settings.kinopoiskApiKey);
+      const details = await provider.getDetails(item.filmId);
+      this.showPreview(details);
+    } catch (error) {
+      new Notice(`Could not load media details: ${getErrorMessage(error)}`);
+      selectButton.disabled = false;
+      selectButton.setText("Select");
+    }
+  }
+
+  private showPreview(details: KinopoiskDetails): void {
+    this.controlsEl.hide();
+    this.resultsEl.hide();
+
+    const preview = this.contentEl.createDiv({ cls: "biblioteka-preview" });
+    preview.createEl("h2", { text: "Preview" });
+    preview.createEl("p", {
+      text: "Review and edit the information before creating a note. Nothing is written to your Vault yet.",
+      cls: "biblioteka-muted",
+    });
+
+    const posterUrl = details.posterUrl || details.posterUrlPreview;
+    if (posterUrl) {
+      preview.createEl("img", {
+        attr: { src: posterUrl, alt: details.nameRu || details.nameEn || "Poster" },
+        cls: "biblioteka-preview-poster",
+      });
+    }
+
+    const addField = (
+      label: string,
+      value: string,
+      multiline = false,
+    ): HTMLInputElement | HTMLTextAreaElement => {
+      const field = preview.createDiv({ cls: "biblioteka-preview-field" });
+      field.createEl("label", { text: label });
+      const control = multiline
+        ? field.createEl("textarea", { cls: "biblioteka-preview-input" })
+        : field.createEl("input", { cls: "biblioteka-preview-input" });
+      control.value = value;
+      if (multiline) (control as HTMLTextAreaElement).rows = 5;
+      return control;
+    };
+
+    addField("Title", details.nameRu || details.nameEn || details.nameOriginal || "");
+    addField("Original title", details.nameOriginal || details.nameEn || "");
+    addField("Year", details.year ? String(details.year) : "");
+    addField("Description", details.description || details.shortDescription || "", true);
+    addField("Genres", (details.genres ?? []).map((x) => x.genre).filter(Boolean).join(", "));
+    addField("Countries", (details.countries ?? []).map((x) => x.country).filter(Boolean).join(", "));
+    addField("Kinopoisk rating", details.ratingKinopoisk == null ? "" : String(details.ratingKinopoisk));
+    addField("IMDb rating", details.ratingImdb == null ? "" : String(details.ratingImdb));
+    addField("Kinopoisk ID", String(details.kinopoiskId));
+
+    const actions = preview.createDiv({ cls: "biblioteka-preview-actions" });
+    const backButton = actions.createEl("button", { text: "Back to results" });
+    backButton.addEventListener("click", () => {
+      preview.remove();
+      this.controlsEl.show();
+      this.resultsEl.show();
+    });
+
+    const createButton = actions.createEl("button", {
+      text: "Create note",
+      cls: "mod-cta",
+    });
+    createButton.disabled = true;
+    createButton.title = "Note creation is the next MVP step.";
+    actions.createEl("span", {
+      text: "Note creation is coming in the next step.",
+      cls: "biblioteka-muted",
     });
   }
 
