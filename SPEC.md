@@ -196,3 +196,28 @@ The MVP must allow the user to:
 10. Refresh ratings manually.
 11. Use the plugin on Desktop and Android.
 12. Retain collected data when an individual provider fails.
+
+## 16. Deferred decisions / backlog
+
+### SFW search filtering — revisit later
+
+**Status:** Deferred; current heuristic is provisional and must not be treated as reliable moderation.
+
+**User intent:**
+- Provide a simple SFW toggle in plugin settings.
+- When enabled, hide explicitly pornographic / erotic productions from search results.
+- Do not hide ordinary movies merely because they are rated 18+.
+- Do not broadly exclude mainstream films that contain mature themes or occasional sexual scenes.
+
+**Problem to investigate:**
+- Kinopoisk keyword search metadata may not provide a dedicated, consistent erotica/adult genre.
+- Search results may omit descriptions or other useful classification metadata.
+- Title/genre keyword matching alone can miss relevant records and can also produce false positives.
+
+**Questions for a future implementation:**
+1. Which metadata can be reliably obtained for each candidate without excessive API requests?
+2. Can details be fetched selectively (for example, only for ambiguous candidates) while respecting provider rate limits?
+3. Should the filter combine provider metadata, a carefully maintained keyword/rule list, and an optional secondary classification source?
+4. How should unknown or incomplete metadata be handled without hiding ordinary cinema unnecessarily?
+
+**Acceptance direction:** The toggle remains simple. The implementation should be conservative: target explicit adult productions, preserve ordinary 18+ cinema, and clearly document that metadata-based filtering cannot guarantee complete detection.
