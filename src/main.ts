@@ -14,16 +14,19 @@ import {
   KinopoiskDetails,
   MediaKind,
 } from "./providers/kinopoisk";
+import { OMDbProvider } from "./providers/omdb";
 
 interface BibliotekaSettings {
   defaultMediaFolder: string;
   kinopoiskApiKey: string;
+  omdbApiKey: string;
   sfwFilter: boolean;
 }
 
 const DEFAULT_SETTINGS: BibliotekaSettings = {
   defaultMediaFolder: "Media",
   kinopoiskApiKey: "",
+  omdbApiKey: "",
   sfwFilter: true,
 };
 
