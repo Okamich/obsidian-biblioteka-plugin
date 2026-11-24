@@ -860,7 +860,7 @@ async function updateExistingNote(
     rated: read("rated"),
     metascore: read("metascore"),
   };
-  for ( (const [key, value] of Object.entries(optionalFields)) ) {
+  for (const [key, value] of Object.entries(optionalFields)) {
     if (value !== "" && value !== undefined) candidateProperties[key] = value;
   }
 
