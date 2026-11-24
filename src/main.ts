@@ -377,7 +377,7 @@ class MediaSearchModal extends Modal {
     button.disabled = true;
     button.setText("Creating…");
     try {
-      const folder = this.plugin.settings.defaultMediaFolder.trim().replace(/^\\/+|\\/+$/g, "") || "Media";
+      const folder = this.plugin.settings.defaultMediaFolder.trim().replace(/^\/+|\/+$/g, "") || "Media";
       await ensureVaultFolder(this.app, folder);
 
       let localPosterPath = "";
@@ -422,15 +422,15 @@ class MediaSearchModal extends Modal {
 
       const frontmatter = Object.entries(properties)
         .map(([key, value]) => `${key}: ${yamlValue(value)}`)
-        .join("\\n");
+        .join("\n");
       const body = [
         `# ${title}`,
         localPosterPath ? `![[${localPosterPath}]]` : "",
         read("description"),
         "",
         details.webUrl ? `[Kinopoisk](${details.webUrl})` : "",
-      ].filter((line, index, array) => line !== "" || (index > 0 && array[index - 1] !== "")).join("\\n");
-      const content = `---\\n${frontmatter}\\n---\\n\\n${body.trim()}\\n`;
+      ].filter((line, index, array) => line !== "" || (index > 0 && array[index - 1] !== "")).join("\n");
+      const content = `---\n${frontmatter}\n---\n\n${body.trim()}\n`;
 
       const baseName = sanitizeFileName(title) || `media-${details.kinopoiskId}`;
       let notePath = `${folder}/${baseName}.md`;
@@ -524,9 +524,9 @@ async function ensureVaultFolder(app: App, folderPath: string): Promise<void> {
 
 function sanitizeFileName(value: string): string {
   return value
-    .replace(/[\\\\/:*?"<>|#^\\[\\]]/g, "")
+    .replace(/[\/:*?"<>|#^\[\]\\]/g, "")
     .replace(/[. ]+$/g, "")
-    .replace(/\\s+/g, " ")
+    .replace(/\s+/g, " ")
     .slice(0, 100);
 }
 
