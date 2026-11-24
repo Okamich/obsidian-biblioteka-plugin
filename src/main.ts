@@ -90,14 +90,14 @@ export default class BibliotekaPlugin extends Plugin {
         const table = renderRatingsTable(ratings);
         const start = "<!-- biblioteka:ratings:start -->";
         const end = "<!-- biblioteka:ratings:end -->";
-        const block = [start, "## Ratings", "", table, end].join("\\n");
+        const block = [start, "## Ratings", "", table, end].join("\n");
         const startIndex = current.indexOf(start);
         const endIndex = current.indexOf(end);
         let next: string;
         if (startIndex >= 0 && endIndex > startIndex) {
           next = current.slice(0, startIndex) + block + current.slice(endIndex + end.length);
         } else {
-          next = `${current.trimEnd()}\\n\\n${block}\\n`;
+          next = `${current.trimEnd()}\n\n${block}\n`;
         }
         await this.app.vault.modify(file, next);
         updated++;
@@ -486,7 +486,7 @@ class MediaSearchModal extends Modal {
         }
       }
 
-      const ratings = buildRatings(details);\n      const properties: Record<string, string | number | string[] | Record<string, string | number>[]> = {
+      const ratings = buildRatings(details);\n      const properties: Record<string, string | number | string[] | Array<{ source: string; value: number; votes?: number; url?: string }>> = {
         type: formatMediaType(details.type),
         kinopoisk_id: Number(read("kinopoiskId")) || details.kinopoiskId,
       };
