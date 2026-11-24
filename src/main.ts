@@ -676,7 +676,7 @@ function sanitizeFileName(value: string): string {
   return value
     .replace(/[\/:*?"<>|#^\[\]\\]/g, "")
     .replace(/[. ]+$/g, "")
-    .replace(/\s+/g, " ");
+    .replace(/\s+/g, " ")
     .slice(0, 100);
 }
 
