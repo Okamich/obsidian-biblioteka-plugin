@@ -20,6 +20,8 @@ import { OMDbProvider, OMDbDetails } from "./providers/omdb";
 
 interface BibliotekaSettings {
   defaultMediaFolder: string;
+  moviesFolder: string;
+  movieFileNameTemplate: string;
   kinopoiskApiKey: string;
   omdbApiKey: string;
   sfwFilter: boolean;
@@ -27,6 +29,8 @@ interface BibliotekaSettings {
 
 const DEFAULT_SETTINGS: BibliotekaSettings = {
   defaultMediaFolder: "Media",
+  moviesFolder: "Media/Movies",
+  movieFileNameTemplate: "{{title}} {{year}}",
   kinopoiskApiKey: "",
   omdbApiKey: "",
   sfwFilter: true,
@@ -147,9 +151,10 @@ class BibliotekaSettingTab extends PluginSettingTab {
       cls: "biblioteka-status",
     });
 
+    containerEl.createEl("h3", { text: "General" });
     new Setting(containerEl)
-      .setName("Default media folder")
-      .setDesc("Vault folder used for generated media notes. Start typing to see existing folders.")
+      .setName("Library folder")
+      .setDesc("Root folder for the media library. Default: Media.")
       .addText((text) => {
         text
           .setPlaceholder("Media")
@@ -161,9 +166,8 @@ class BibliotekaSettingTab extends PluginSettingTab {
         new FolderSuggest(this.app, text.inputEl);
       });
 
-    containerEl.createEl("h3", { text: "Content filtering" });
     new Setting(containerEl)
-      .setName("SFW filter")
+      .setName("NSFW filter")
       .setDesc("Hide explicitly pornographic and adult content. Ordinary 18+ movies remain visible.")
       .addToggle((toggle) =>
         toggle
@@ -174,10 +178,15 @@ class BibliotekaSettingTab extends PluginSettingTab {
           }),
       );
 
-    containerEl.createEl("h3", { text: "Providers" });
+    containerEl.createEl("h3", { text: "API" });
+    containerEl.createEl("p", {
+      text: "Manage API keys and test connections. Keys are stored in plugin settings, not in media notes.",
+      cls: "biblioteka-muted",
+    });
+
     new Setting(containerEl)
       .setName("Kinopoisk API key")
-      .setDesc("Your personal API token. It is stored in plugin settings, not in media notes.")
+      .setDesc("Primary source for Russian-language movie and TV search.")
       .addText((text) => {
         text.inputEl.type = "password";
         text
@@ -189,16 +198,34 @@ class BibliotekaSettingTab extends PluginSettingTab {
           });
       })
       .addButton((button) =>
-        button
-          .setButtonText("Get API key")
-          .onClick(() => {
-            window.open("https://kinopoiskapiunofficial.tech/", "_blank");
-          }),
+        button.setButtonText("Get API key").onClick(() => {
+          window.open("https://kinopoiskapiunofficial.tech/", "_blank");
+        }),
+      )
+      .addButton((button) =>
+        button.setButtonText("Test connection").onClick(async () => {
+          const key = this.plugin.settings.kinopoiskApiKey.trim();
+          if (!key) {
+            new Notice("Enter your Kinopoisk API key first.");
+            return;
+          }
+          button.setButtonText("Testing…");
+          button.setDisabled(true);
+          try {
+            await new KinopoiskProvider(key).testConnection();
+            new Notice("Kinopoisk API connection successful.");
+          } catch (error) {
+            new Notice(`Kinopoisk connection failed: ${getErrorMessage(error)}`);
+          } finally {
+            button.setButtonText("Test connection");
+            button.setDisabled(false);
+          }
+        }),
       );
 
     new Setting(containerEl)
       .setName("OMDb API key")
-      .setDesc("Optional secondary provider. Get a free key from OMDb; the key is stored in plugin settings.")
+      .setDesc("Additional metadata and ratings source.")
       .addText((text) => {
         text.inputEl.type = "password";
         text
@@ -210,16 +237,10 @@ class BibliotekaSettingTab extends PluginSettingTab {
           });
       })
       .addButton((button) =>
-        button
-          .setButtonText("Get API key")
-          .onClick(() => {
-            window.open("https://www.omdbapi.com/apikey.aspx", "_blank");
-          }),
-      );
-
-    new Setting(containerEl)
-      .setName("OMDb connection")
-      .setDesc("Verify the OMDb API key by searching for a title and loading its details.")
+        button.setButtonText("Get API key").onClick(() => {
+          window.open("https://www.omdbapi.com/apikey.aspx", "_blank");
+        }),
+      )
       .addButton((button) =>
         button.setButtonText("Test connection").onClick(async () => {
           const key = this.plugin.settings.omdbApiKey.trim();
@@ -241,28 +262,37 @@ class BibliotekaSettingTab extends PluginSettingTab {
         }),
       );
 
+    containerEl.createEl("h3", { text: "Movies" });
+    containerEl.createEl("p", {
+      text: "Settings for movies and TV series.",
+      cls: "biblioteka-muted",
+    });
+
     new Setting(containerEl)
-      .setName("Connection")
-      .setDesc("Send a small test search request to verify the API key.")
-      .addButton((button) =>
-        button.setButtonText("Test connection").onClick(async () => {
-          const key = this.plugin.settings.kinopoiskApiKey.trim();
-          if (!key) {
-            new Notice("Enter your Kinopoisk API key first.");
-            return;
-          }
-          button.setButtonText("Testing…");
-          button.setDisabled(true);
-          try {
-            await new KinopoiskProvider(key).testConnection();
-            new Notice("Kinopoisk API connection successful.");
-          } catch (error) {
-            new Notice(`Kinopoisk connection failed: ${getErrorMessage(error)}`);
-          } finally {
-            button.setButtonText("Test connection");
-            button.setDisabled(false);
-          }
-        }),
+      .setName("Movies folder")
+      .setDesc("Destination folder for movie and TV series notes. Default: Media/Movies.")
+      .addText((text) => {
+        text
+          .setPlaceholder("Media/Movies")
+          .setValue(this.plugin.settings.moviesFolder)
+          .onChange(async (value) => {
+            this.plugin.settings.moviesFolder = value.trim() || "Media/Movies";
+            await this.plugin.saveSettings();
+          });
+        new FolderSuggest(this.app, text.inputEl);
+      });
+
+    new Setting(containerEl)
+      .setName("File name format")
+      .setDesc("Available variables: {{title}} and {{year}}. Default: {{title}} {{year}}.")
+      .addText((text) =>
+        text
+          .setPlaceholder("{{title}} {{year}}")
+          .setValue(this.plugin.settings.movieFileNameTemplate)
+          .onChange(async (value) => {
+            this.plugin.settings.movieFileNameTemplate = value.trim() || "{{title}} {{year}}";
+            await this.plugin.saveSettings();
+          }),
       );
   }
 }
@@ -602,7 +632,7 @@ class MediaSearchModal extends Modal {
       }
 
       button.setText("Creating…");
-      const folder = this.plugin.settings.defaultMediaFolder.trim().replace(/^\/+|\/+$/g, "") || "Media";
+      const folder = this.plugin.settings.moviesFolder.trim().replace(/^\/+|\/+$/g, "") || "Media/Movies";
       await ensureVaultFolder(this.app, folder);
 
       let localPosterPath = "";
@@ -676,7 +706,13 @@ class MediaSearchModal extends Modal {
       ].filter((line, index, array) => line !== "" || (index > 0 && array[index - 1] !== "")).join("\n");
       const content = `---\n${frontmatter}\n---\n\n${body.trim()}\n`;
 
-      const baseName = sanitizeFileName(title) || `media-${details.kinopoiskId}`;
+      const yearText = read("year");
+      const fileName = renderFileNameTemplate(
+        this.plugin.settings.movieFileNameTemplate,
+        title,
+        yearText,
+      );
+      const baseName = sanitizeFileName(fileName) || `media-${details.kinopoiskId}`;
       let notePath = `${folder}/${baseName}.md`;
       let suffix = 2;
       while (this.app.vault.getAbstractFileByPath(notePath)) {
@@ -1071,6 +1107,15 @@ async function ensureVaultFolder(app: App, folderPath: string): Promise<void> {
       await app.vault.createFolder(current);
     }
   }
+}
+
+function renderFileNameTemplate(template: string, title: string, year: string): string {
+  return template
+    .replace(/{{\\s*title\\s*}}/gi, title)
+    .replace(/{{\\s*year\\s*}}/gi, year)
+    .replace(/{{[^{}]+}}/g, "")
+    .replace(/\\s+/g, " ")
+    .trim();
 }
 
 function sanitizeFileName(value: string): string {
