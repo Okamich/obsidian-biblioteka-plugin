@@ -316,10 +316,10 @@ function isExplicitAdultContent(item: KinopoiskSearchItem): boolean {
   // Kinopoisk does not consistently expose a dedicated "erotica" genre.
   // Check titles, descriptions and any genre labels that are available.
   const explicitTerms =
-    /(?:^|[^\p{L}\p{N}])(?:порно(?:граф\w*)?|эротик\w*|нимфоман\w*|для\s+взрослых|xxx|хентай|hentai|porn(?:ography)?|erotic\w*|nymphomaniac|nymphomania|sexploitation|softcore|hardcore|adult\s+(?:film|content))(?:$|[^\p{L}\p{N}])/iu;
+    /(?:^|[^\p{L}\p{N}])(?:порно(?:граф\p{L}*)?|эротик\p{L}*|нимфоман\p{L}*|для\s+взрослых|xxx|хентай|hentai|porn(?:ography)?|erotic\p{L}*|nymphomaniac|nymphomania|sexploitation|softcore|hardcore|adult\s+(?:film|content))(?:$|[^\p{L}\p{N}])/iu;
 
   const explicitPhrases =
-    /(?:откровенн\w*\s+(?:сексуальн\w*\s+)?сцен\w*|сцен\w*\s+(?:откровенного\s+)?секс\w*|explicit\s+(?:sexual\s+)?content|graphic\s+sex(?:ual)?)/iu;
+    /(?:откровенн\p{L}*\s+(?:сексуальн\p{L}*\s+)?сцен\p{L}*|сцен\p{L}*\s+(?:откровенного\s+)?секс\p{L}*|explicit\s+(?:sexual\s+)?content|graphic\s+sex(?:ual)?)/iu;
 
   return explicitTerms.test(metadata) || explicitPhrases.test(metadata);
 }
