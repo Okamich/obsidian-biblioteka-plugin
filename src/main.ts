@@ -14,7 +14,7 @@ import {
   KinopoiskDetails,
   MediaKind,
 } from "./providers/kinopoisk";
-import { OMDbProvider } from "./providers/omdb";
+import { OMDbProvider, OMDbDetails } from "./providers/omdb";
 
 interface BibliotekaSettings {
   defaultMediaFolder: string;
@@ -87,7 +87,7 @@ export default class BibliotekaPlugin extends Plugin {
         if (!Number.isInteger(id) || id <= 0) continue;
 
         const details = await provider.getDetails(id);
-        const ratings = buildRatings(details);
+        const ratings = buildRatings(details, omdbDetails);
         if (ratings.length === 0) continue;
 
         await this.app.fileManager.processFrontMatter(file, (fm) => {
@@ -410,7 +410,19 @@ class MediaSearchModal extends Modal {
     try {
       const provider = new KinopoiskProvider(this.plugin.settings.kinopoiskApiKey);
       const details = await provider.getDetails(item.filmId);
-      this.showPreview(details);
+      let omdbDetails: OMDbDetails | undefined;
+
+      const omdbKey = this.plugin.settings.omdbApiKey.trim();
+      if (omdbKey && details.imdbId) {
+        try {
+          omdbDetails = await new OMDbProvider(omdbKey).getDetails(details.imdbId);
+        } catch (error) {
+          console.warn("Biblioteka: OMDb enrichment failed; continuing with Kinopoisk data.", error);
+          new Notice("OMDb could not be reached. Continuing with Kinopoisk data.");
+        }
+      }
+
+      this.showPreview(details, omdbDetails);
     } catch (error) {
       new Notice(`Could not load media details: ${getErrorMessage(error)}`);
       selectButton.disabled = false;
@@ -418,7 +430,7 @@ class MediaSearchModal extends Modal {
     }
   }
 
-  private showPreview(details: KinopoiskDetails): void {
+  private showPreview(details: KinopoiskDetails, omdbDetails?: OMDbDetails): void {
     this.controlsEl.hide();
     this.resultsEl.hide();
 
@@ -449,16 +461,40 @@ class MediaSearchModal extends Modal {
       fields[key] = control;
     };
 
-    addField("title", "Title", details.nameRu || details.nameEn || details.nameOriginal || "");
-    addField("originalTitle", "Original title", details.nameOriginal || details.nameEn || "");
-    addField("year", "Year", details.year ? String(details.year) : "");
-    addField("description", "Description", details.description || details.shortDescription || "", true);
-    addField("genres", "Genres (comma-separated)", (details.genres ?? []).map((x) => x.genre).filter(Boolean).join(", "));
-    addField("countries", "Countries (comma-separated)", (details.countries ?? []).map((x) => x.country).filter(Boolean).join(", "));
+    const kpGenres = (details.genres ?? []).map((x) => x.genre).filter(Boolean);
+    const kpCountries = (details.countries ?? []).map((x) => x.country).filter(Boolean);
+    const omdbGenres = splitList(omdbDetails?.Genre ?? "");
+    const omdbCountries = splitList(omdbDetails?.Country ?? "");
+    const omdbYear = omdbDetails?.Year?.match(/\\d{4}/)?.[0] ?? "";
+    const sourceLabel = (label: string, fromOmdb: boolean): string =>
+      fromOmdb ? `${label} · OMDb` : `${label} · Kinopoisk`;
+
+    const title = details.nameRu || details.nameEn || details.nameOriginal || omdbDetails?.Title || "";
+    const originalTitle = details.nameOriginal || details.nameEn || omdbDetails?.Title || "";
+    const year = details.year ? String(details.year) : omdbYear;
+    const description = details.description || details.shortDescription || omdbDetails?.Plot || "";
+    const genres = kpGenres.length ? kpGenres : omdbGenres;
+    const countries = kpCountries.length ? kpCountries : omdbCountries;
+    const imdbRating = details.ratingImdb ?? parseRatingNumber(omdbDetails?.imdbRating);
+
+    addField("title", "Title", title);
+    addField("originalTitle", sourceLabel("Original title", !details.nameOriginal && !details.nameEn && Boolean(omdbDetails?.Title)), originalTitle);
+    addField("year", sourceLabel("Year", !details.year && Boolean(omdbYear)), year);
+    addField("description", sourceLabel("Description", !details.description && !details.shortDescription && Boolean(omdbDetails?.Plot)), description, true);
+    addField("genres", sourceLabel("Genres (comma-separated)", kpGenres.length === 0 && omdbGenres.length > 0), genres.join(", "));
+    addField("countries", sourceLabel("Countries (comma-separated)", kpCountries.length === 0 && omdbCountries.length > 0), countries.join(", "));
     addField("ratingKinopoisk", "Kinopoisk rating", details.ratingKinopoisk == null ? "" : String(details.ratingKinopoisk));
-    addField("ratingImdb", "IMDb rating", details.ratingImdb == null ? "" : String(details.ratingImdb));
+    addField("ratingImdb", sourceLabel("IMDb rating", details.ratingImdb == null && imdbRating != null), imdbRating == null ? "" : String(imdbRating));
+    addField("director", "Director · OMDb", omdbDetails?.Director && omdbDetails.Director !== "N/A" ? omdbDetails.Director : "");
+    addField("writer", "Writer · OMDb", omdbDetails?.Writer && omdbDetails.Writer !== "N/A" ? omdbDetails.Writer : "");
+    addField("actors", "Actors · OMDb", omdbDetails?.Actors && omdbDetails.Actors !== "N/A" ? omdbDetails.Actors : "");
+    addField("runtime", "Runtime · OMDb", omdbDetails?.Runtime && omdbDetails.Runtime !== "N/A" ? omdbDetails.Runtime : "");
+    addField("language", "Language · OMDb", omdbDetails?.Language && omdbDetails.Language !== "N/A" ? omdbDetails.Language : "");
+    addField("awards", "Awards · OMDb", omdbDetails?.Awards && omdbDetails.Awards !== "N/A" ? omdbDetails.Awards : "");
+    addField("rated", "Age rating · OMDb", omdbDetails?.Rated && omdbDetails.Rated !== "N/A" ? omdbDetails.Rated : "");
+    addField("metascore", "Metascore · OMDb", omdbDetails?.Metascore && omdbDetails.Metascore !== "N/A" ? omdbDetails.Metascore : "");
     addField("kinopoiskId", "Kinopoisk ID", String(details.kinopoiskId));
-    addField("imdbId", "IMDb ID", details.imdbId || "");
+    addField("imdbId", "IMDb ID", details.imdbId || omdbDetails?.imdbID || "");
 
     const actions = preview.createDiv({ cls: "biblioteka-preview-actions" });
     const backButton = actions.createEl("button", { text: "Back to results" });
@@ -472,7 +508,7 @@ class MediaSearchModal extends Modal {
       text: "Create note",
       cls: "mod-cta",
     });
-    createButton.addEventListener("click", () => void this.createNote(details, posterUrl, fields, createButton));
+    createButton.addEventListener("click", () => void this.createNote(details, posterUrl, fields, createButton, omdbDetails));
   }
 
   private async createNote(
@@ -480,6 +516,7 @@ class MediaSearchModal extends Modal {
     posterUrl: string,
     fields: Record<string, HTMLInputElement | HTMLTextAreaElement>,
     button: HTMLButtonElement,
+    omdbDetails?: OMDbDetails,
     skipDuplicateCheck = false,
   ): Promise<void> {
     const read = (key: string): string => fields[key]?.value.trim() ?? "";
@@ -506,7 +543,7 @@ class MediaSearchModal extends Modal {
               await this.app.workspace.getLeaf(false).openFile(file);
               this.close();
             },
-            () => void this.createNote(details, posterUrl, fields, button, true),
+            () => void this.createNote(details, posterUrl, fields, button, omdbDetails, true),
             () => {
               button.disabled = false;
               button.setText("Create note");
@@ -559,6 +596,22 @@ class MediaSearchModal extends Modal {
       if (Number.isFinite(kpRating) && read("ratingKinopoisk") !== "") properties.rating_kinopoisk = kpRating;
       if (Number.isFinite(imdbRating) && read("ratingImdb") !== "") properties.rating_imdb = imdbRating;
       if (imdbId) properties.imdb_id = imdbId;
+      const director = read("director");
+      const writer = read("writer");
+      const actors = read("actors");
+      const runtime = read("runtime");
+      const language = read("language");
+      const awards = read("awards");
+      const rated = read("rated");
+      const metascore = read("metascore");
+      if (director) properties.director = director;
+      if (writer) properties.writer = writer;
+      if (actors) properties.actors = actors;
+      if (runtime) properties.runtime = runtime;
+      if (language) properties.language = language;
+      if (awards) properties.awards = awards;
+      if (rated) properties.rated = rated;
+      if (metascore) properties.metascore = metascore;
       if (ratings.length) properties.ratings = ratings;
       if (localPosterPath) properties.poster = localPosterPath;
 
@@ -608,7 +661,7 @@ interface MediaRating {
   url?: string;
 }
 
-function buildRatings(details: KinopoiskDetails): MediaRating[] {
+function buildRatings(details: KinopoiskDetails, omdbDetails?: OMDbDetails): MediaRating[] {
   const ratings: MediaRating[] = [];
   if (typeof details.ratingKinopoisk === "number") {
     ratings.push({
@@ -620,17 +673,47 @@ function buildRatings(details: KinopoiskDetails): MediaRating[] {
       ...(details.webUrl ? { url: details.webUrl } : {}),
     });
   }
-  if (typeof details.ratingImdb === "number") {
+  const imdbValue = typeof details.ratingImdb === "number"
+    ? details.ratingImdb
+    : parseRatingNumber(omdbDetails?.imdbRating);
+  if (typeof imdbValue === "number") {
     ratings.push({
       source: "IMDb",
-      value: details.ratingImdb,
+      value: imdbValue,
       ...(typeof details.ratingImdbVoteCount === "number"
         ? { votes: details.ratingImdbVoteCount }
+        : parseVoteCount(omdbDetails?.imdbVotes) != null
+          ? { votes: parseVoteCount(omdbDetails?.imdbVotes) as number }
+          : {}),
+      ...((details.imdbId || omdbDetails?.imdbID)
+        ? { url: `https://www.imdb.com/title/${details.imdbId || omdbDetails?.imdbID}/` }
         : {}),
-      ...(details.imdbId ? { url: `https://www.imdb.com/title/${details.imdbId}/` } : {}),
     });
   }
+
+  for (const rating of omdbDetails?.Ratings ?? []) {
+    const source = rating.Source.trim();
+    if (/internet movie database/i.test(source)) continue;
+    const value = parseRatingNumber(rating.Value);
+    if (value == null) continue;
+    if (ratings.some((existing) => existing.source.toLowerCase() === source.toLowerCase())) continue;
+    ratings.push({ source, value });
+  }
   return ratings;
+}
+
+function parseRatingNumber(value?: string): number | undefined {
+  if (!value || value === "N/A") return undefined;
+  const match = value.match(/\\d+(?:\\.\\d+)?/);
+  if (!match) return undefined;
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseVoteCount(value?: string): number | undefined {
+  if (!value || value === "N/A") return undefined;
+  const parsed = Number(value.replace(/,/g, ""));
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function renderRatingsTable(ratings: MediaRating[]): string {
