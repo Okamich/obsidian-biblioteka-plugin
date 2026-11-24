@@ -76,3 +76,45 @@
     align-items: flex-start;
   }
 }
+
+
+.biblioteka-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 65vh;
+  overflow-y: auto;
+  margin-top: 1rem;
+}
+
+.biblioteka-preview-poster {
+  width: 112px;
+  max-height: 168px;
+  object-fit: cover;
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+}
+
+.biblioteka-preview-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.biblioteka-preview-field label {
+  color: var(--text-muted);
+  font-size: var(--font-smaller);
+}
+
+.biblioteka-preview-input {
+  width: 100%;
+  min-width: 0;
+}
+
+.biblioteka-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 0.5rem;
+}
