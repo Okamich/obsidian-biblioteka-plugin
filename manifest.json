@@ -1,0 +1,9 @@
+{
+  "id": "obsidian-biblioteka-plugin",
+  "name": "Biblioteka",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Search, collect, enrich, and organize your favorite media from multiple sources.",
+  "author": "Okamich",
+  "isDesktopOnly": false
+}
