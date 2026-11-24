@@ -630,8 +630,11 @@ class MediaSearchModal extends Modal {
         if (kpEnabled) {
           try {
             const found = await new KinopoiskProvider(this.plugin.settings.kinopoiskApiKey).search(item.title);
+            const selectedTitle = normalizeDuplicateTitle(item.title);
             const matches = (found.films ?? []).filter((candidate) =>
-              normalizeDuplicateTitle(candidate.nameRu || candidate.nameEn || candidate.nameOriginal || "") === normalizeDuplicateTitle(item.title)
+              [candidate.nameRu, candidate.nameEn, candidate.nameOriginal]
+                .filter((value): value is string => Boolean(value))
+                .some((value) => normalizeDuplicateTitle(value) === selectedTitle)
               && (!item.year || !candidate.year || candidate.year === item.year)
               && matchesKind(candidate, item.type === "TV series" ? "series" : "movie"),
             );
@@ -725,7 +728,10 @@ class MediaSearchModal extends Modal {
     const countries = omdbFirst
       ? (omdbCountries.length ? omdbCountries : kpCountries)
       : (kpCountries.length ? kpCountries : omdbCountries);
-    const imdbRating = details.ratingImdb ?? parseRatingNumber(omdbDetails?.imdbRating);
+    const omdbImdbRating = parseRatingNumber(omdbDetails?.imdbRating);
+    const imdbRating = omdbFirst
+      ? (omdbImdbRating ?? details.ratingImdb)
+      : (details.ratingImdb ?? omdbImdbRating);
 
     addField("title", "Title", title);
     addField("originalTitle", sourceLabel("Original title", omdbFirst ? Boolean(omdbDetails?.Title) : !details.nameOriginal && !details.nameEn && Boolean(omdbDetails?.Title)), originalTitle);
@@ -796,7 +802,7 @@ class MediaSearchModal extends Modal {
             async (file) => {
               button.setText("Updating…");
               try {
-                await updateExistingNote(this.app, file, details, fields, omdbDetails);
+                await updateExistingNote(this.app, file, details, fields, omdbDetails, this.plugin.settings.providerOrder[0] === "omdb");
                 new Notice(`Updated: ${file.path}`);
                 this.close();
               } catch (error) {
@@ -839,7 +845,7 @@ class MediaSearchModal extends Modal {
         }
       }
 
-      const ratings = buildRatings(details, omdbDetails);
+      const ratings = buildRatings(details, omdbDetails, this.plugin.settings.providerOrder[0] === "omdb");
       const properties: Record<string, string | number | string[] | Array<{ source: string; value: number; votes?: number; url?: string }>> = {
         type: formatMediaType(details.type),
       };
@@ -953,7 +959,7 @@ interface MediaRating {
   url?: string;
 }
 
-function buildRatings(details: KinopoiskDetails, omdbDetails?: OMDbDetails): MediaRating[] {
+function buildRatings(details: KinopoiskDetails, omdbDetails?: OMDbDetails, preferOmdb = false): MediaRating[] {
   const ratings: MediaRating[] = [];
   if (typeof details.ratingKinopoisk === "number") {
     ratings.push({
@@ -965,9 +971,10 @@ function buildRatings(details: KinopoiskDetails, omdbDetails?: OMDbDetails): Med
       ...(details.webUrl ? { url: details.webUrl } : {}),
     });
   }
-  const imdbValue = typeof details.ratingImdb === "number"
-    ? details.ratingImdb
-    : parseRatingNumber(omdbDetails?.imdbRating);
+  const omdbImdbValue = parseRatingNumber(omdbDetails?.imdbRating);
+  const imdbValue = preferOmdb
+    ? (omdbImdbValue ?? details.ratingImdb)
+    : (details.ratingImdb ?? omdbImdbValue);
   if (typeof imdbValue === "number") {
     ratings.push({
       source: "IMDb",
@@ -1108,9 +1115,10 @@ async function updateExistingNote(
   details: KinopoiskDetails,
   fields: Record<string, HTMLInputElement | HTMLTextAreaElement>,
   omdbDetails?: OMDbDetails,
+  preferOmdb = false,
 ): Promise<void> {
   const read = (key: string): string => fields[key]?.value.trim() ?? "";
-  const ratings = buildRatings(details, omdbDetails);
+  const ratings = buildRatings(details, omdbDetails, preferOmdb);
   const candidateProperties: Record<string, unknown> = {
     type: formatMediaType(details.type),
   };
