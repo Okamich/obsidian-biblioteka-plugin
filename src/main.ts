@@ -712,7 +712,7 @@ class MediaSearchModal extends Modal {
     const sourceLabel = (label: string, fromOmdb: boolean): string =>
       fromOmdb ? `${label} · OMDb` : `${label} · Kinopoisk`;
 
-    const omdbFirst = this.plugin.settings.providerOrder[0] === "omdb";
+    const omdbFirst = this.plugin.settings.providerOrder[0] === "omdb" || details.kinopoiskId <= 0;
     const kpTitle = details.nameRu || details.nameEn || details.nameOriginal || "";
     const title = omdbFirst
       ? (omdbDetails?.Title && omdbDetails.Title !== "N/A" ? omdbDetails.Title : kpTitle)
