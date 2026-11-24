@@ -216,7 +216,7 @@ class BibliotekaSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("OMDb connection")
-      .setDesc("Verify the OMDb API key with a small IMDb-ID lookup.")
+      .setDesc("Verify the OMDb API key by searching for a title and loading its details.")
       .addButton((button) =>
         button.setButtonText("Test connection").onClick(async () => {
           const key = this.plugin.settings.omdbApiKey.trim();
