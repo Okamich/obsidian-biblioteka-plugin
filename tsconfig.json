@@ -10,7 +10,6 @@
     "moduleResolution": "Bundler",
     "importHelpers": true,
     "isolatedModules": true,
-    "preserve पर": false,
     "strictNullChecks": true,
     "lib": ["DOM", "ES2018"],
     "skipLibCheck": true
