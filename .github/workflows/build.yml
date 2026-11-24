@@ -1,4 +1,4 @@
-name: Build plugin
+name: Build and publish beta
 
 on:
   push:
@@ -6,17 +6,46 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
+
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+
       - name: Typecheck and build
         run: npm run build
+
+      - name: Prepare release files
+        id: release
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          VERSION="0.1.${GITHUB_RUN_NUMBER}"
+          mkdir -p dist
+          cp main.js styles.css dist/
+          jq --arg version "$VERSION" '.version = $version' manifest.json > dist/manifest.json
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Publish beta release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.release.outputs.version }}" \
+            dist/main.js dist/manifest.json dist/styles.css \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Biblioteka ${{ steps.release.outputs.version }}" \
+            --notes "Automated beta build from commit $GITHUB_SHA." \
+            --prerelease
