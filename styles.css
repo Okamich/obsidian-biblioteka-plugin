@@ -1,0 +1,10 @@
+/* Biblioteka — plugin styles */
+
+.biblioteka-modal {
+  min-width: min(560px, 90vw);
+}
+
+.biblioteka-status {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
