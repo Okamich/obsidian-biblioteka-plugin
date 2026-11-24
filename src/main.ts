@@ -489,6 +489,8 @@ interface DuplicateMatch {
 }
 
 class DuplicateWarningModal extends Modal {
+  private resolved = false;
+
   constructor(
     app: App,
     private readonly matches: DuplicateMatch[],
@@ -512,6 +514,7 @@ class DuplicateWarningModal extends Modal {
       row.createEl("p", { text: match.reason, cls: "biblioteka-muted" });
       const openButton = row.createEl("button", { text: "Open this note" });
       openButton.addEventListener("click", () => {
+        this.resolved = true;
         void this.onOpenFile(match.file);
         this.close();
       });
@@ -527,11 +530,13 @@ class DuplicateWarningModal extends Modal {
     const actions = this.contentEl.createDiv({ cls: "biblioteka-preview-actions" });
     const continueButton = actions.createEl("button", { text: "Create anyway", cls: "mod-cta" });
     continueButton.addEventListener("click", () => {
+      this.resolved = true;
       this.close();
       this.onContinue();
     });
     const cancelButton = actions.createEl("button", { text: "Cancel" });
     cancelButton.addEventListener("click", () => {
+      this.resolved = true;
       this.close();
       this.onCancel();
     });
@@ -539,6 +544,7 @@ class DuplicateWarningModal extends Modal {
 
   onClose(): void {
     this.contentEl.empty();
+    if (!this.resolved) this.onCancel();
   }
 }
 
@@ -587,9 +593,9 @@ function normalizeDuplicateTitle(value: string): string {
     .normalize("NFKC")
     .toLocaleLowerCase()
     .replace(/[’‘']/g, "")
-    .replace(/[^\\p{L}\\p{N}]+/gu, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim()
-    .replace(/\\s+/g, " ");
+    .replace(/\s+/g, " ");
 }
 
 function normalizeMediaType(value: string): string {
@@ -670,7 +676,7 @@ function sanitizeFileName(value: string): string {
   return value
     .replace(/[\/:*?"<>|#^\[\]\\]/g, "")
     .replace(/[. ]+$/g, "")
-    .replace(/\s+/g, " ")
+    .replace(/\s+/g, " ");
     .slice(0, 100);
 }
 
