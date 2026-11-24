@@ -15,11 +15,13 @@ import {
 interface BibliotekaSettings {
   defaultMediaFolder: string;
   kinopoiskApiKey: string;
+  sfwFilter: boolean;
 }
 
 const DEFAULT_SETTINGS: BibliotekaSettings = {
   defaultMediaFolder: "Media",
   kinopoiskApiKey: "",
+  sfwFilter: true,
 };
 
 export default class BibliotekaPlugin extends Plugin {
@@ -80,6 +82,19 @@ class BibliotekaSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.defaultMediaFolder)
           .onChange(async (value) => {
             this.plugin.settings.defaultMediaFolder = value.trim() || "Media";
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    containerEl.createEl("h3", { text: "Content filtering" });
+    new Setting(containerEl)
+      .setName("SFW filter")
+      .setDesc("Hide explicitly pornographic and adult content. Ordinary 18+ movies remain visible.")
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.sfwFilter)
+          .onChange(async (value) => {
+            this.plugin.settings.sfwFilter = value;
             await this.plugin.saveSettings();
           }),
       );
@@ -197,11 +212,19 @@ class MediaSearchModal extends Modal {
       const provider = new KinopoiskProvider(this.plugin.settings.kinopoiskApiKey);
       const response = await provider.search(query);
       const kind = this.kindSelect.value as MediaKind;
-      const items = (response.films ?? []).filter((item) => matchesKind(item, kind));
+      const kindMatches = (response.films ?? []).filter((item) => matchesKind(item, kind));
+      const items = this.plugin.settings.sfwFilter
+        ? kindMatches.filter((item) => !isExplicitAdultContent(item))
+        : kindMatches;
+      const hiddenCount = kindMatches.length - items.length;
 
       this.resultsEl.empty();
       if (items.length === 0) {
-        this.resultsEl.createEl("p", { text: "No matching titles found." });
+        this.resultsEl.createEl("p", {
+          text: hiddenCount > 0
+            ? `No matching titles found. SFW filter hid ${hiddenCount} explicit adult result(s).`
+            : "No matching titles found.",
+        });
         return;
       }
 
@@ -265,6 +288,30 @@ class MediaSearchModal extends Modal {
   onClose(): void {
     this.contentEl.empty();
   }
+}
+
+
+/**
+ * Conservative metadata-based SFW filter.
+ * Age ratings such as 18+ are intentionally ignored: they do not by themselves
+ * indicate pornographic content.
+ */
+function isExplicitAdultContent(item: KinopoiskSearchItem): boolean {
+  const metadata = [
+    item.nameRu,
+    item.nameEn,
+    item.nameOriginal,
+    item.description,
+    ...(item.genres ?? []).map((genre) => genre.genre),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLocaleLowerCase();
+
+  const explicitTerms =
+    /(?:^|[^\\p{L}\\p{N}])(?:порно(?:граф(?:ия|ический|ическую|ического))?|порнография|для\\s+взрослых|xxx|hentai|хентай|porn(?:ography)?|hardcore)(?:$|[^\\p{L}\\p{N}])/iu;
+
+  return explicitTerms.test(metadata);
 }
 
 function matchesKind(item: KinopoiskSearchItem, kind: MediaKind): boolean {
