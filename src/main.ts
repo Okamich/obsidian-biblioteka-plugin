@@ -729,7 +729,7 @@ class MediaSearchModal extends Modal {
     addField("awards", "Awards · OMDb", omdbDetails?.Awards && omdbDetails.Awards !== "N/A" ? omdbDetails.Awards : "");
     addField("rated", "Age rating · OMDb", omdbDetails?.Rated && omdbDetails.Rated !== "N/A" ? omdbDetails.Rated : "");
     addField("metascore", "Metascore · OMDb", omdbDetails?.Metascore && omdbDetails.Metascore !== "N/A" ? omdbDetails.Metascore : "");
-    addField("kinopoiskId", "Kinopoisk ID", String(details.kinopoiskId));
+    addField("kinopoiskId", "Kinopoisk ID", details.kinopoiskId > 0 ? String(details.kinopoiskId) : "");
     addField("imdbId", "IMDb ID", details.imdbId || omdbDetails?.imdbID || "");
 
     const actions = preview.createDiv({ cls: "biblioteka-preview-actions" });
@@ -1201,7 +1201,10 @@ async function findDuplicateNotes(
       continue;
     }
 
-    const existingTitle = normalizeDuplicateTitle(String(frontmatter.title ?? file.basename));
+    const noteContent = await app.vault.cachedRead(file);
+    const headingTitle = noteContent.match(/^#\\s+(.+)$/m)?.[1];
+    const fallbackTitle = headingTitle || file.basename.replace(/\\s+\\d{4}$/, "");
+    const existingTitle = normalizeDuplicateTitle(String(frontmatter.title ?? fallbackTitle));
     const existingYear = Number(frontmatter.year);
     const existingType = normalizeMediaType(String(frontmatter.type ?? ""));
 
