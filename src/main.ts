@@ -269,9 +269,11 @@ class BibliotekaSettingTab extends PluginSettingTab {
 
 class FolderSuggest extends AbstractInputSuggest<string> {
   private readonly folders: string[];
+  private readonly folderInput: HTMLInputElement;
 
   constructor(app: App, inputEl: HTMLInputElement) {
     super(app, inputEl);
+    this.folderInput = inputEl;
     this.folders = app.vault
       .getAllLoadedFiles()
       .filter((file) => file instanceof TFolder)
@@ -293,7 +295,7 @@ class FolderSuggest extends AbstractInputSuggest<string> {
 
   selectSuggestion(folder: string): void {
     this.setValue(folder);
-    this.inputEl.dispatchEvent(new Event("input", { bubbles: true }));
+    this.folderInput.dispatchEvent(new Event("input", { bubbles: true }));
     this.close();
   }
 }
