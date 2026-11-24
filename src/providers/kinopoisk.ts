@@ -16,6 +16,8 @@ export interface KinopoiskSearchItem {
   rating?: string | number;
   ratingVoteCount?: number;
   filmLength?: number;
+  description?: string;
+  genres?: Array<{ genre?: string }>;
 }
 
 interface KinopoiskSearchResponse {
