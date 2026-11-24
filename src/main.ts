@@ -595,7 +595,7 @@ function renderRatingsTable(ratings: MediaRating[]): string {
 }
 
 function escapeMarkdownTable(value: string): string {
-  return value.replace(/\\|/g, "\\\\|").replace(/[\\r\\n]+/g, " ");
+  return value.replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
 }
 \ninterface DuplicateMatch {
   file: TFile;
