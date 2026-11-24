@@ -5,6 +5,7 @@ import {
   Plugin,
   PluginSettingTab,
   Setting,
+  requestUrl,
 } from "obsidian";
 import {
   KinopoiskProvider,
@@ -309,11 +310,11 @@ class MediaSearchModal extends Modal {
     const preview = this.contentEl.createDiv({ cls: "biblioteka-preview" });
     preview.createEl("h2", { text: "Preview" });
     preview.createEl("p", {
-      text: "Review and edit the information before creating a note. Nothing is written to your Vault yet.",
+      text: "Review and edit the information before creating a note. Changes here are saved to the new note.",
       cls: "biblioteka-muted",
     });
 
-    const posterUrl = details.posterUrl || details.posterUrlPreview;
+    const posterUrl = details.posterUrl || details.posterUrlPreview || "";
     if (posterUrl) {
       preview.createEl("img", {
         attr: { src: posterUrl, alt: details.nameRu || details.nameEn || "Poster" },
@@ -321,11 +322,8 @@ class MediaSearchModal extends Modal {
       });
     }
 
-    const addField = (
-      label: string,
-      value: string,
-      multiline = false,
-    ): HTMLInputElement | HTMLTextAreaElement => {
+    const fields: Record<string, HTMLInputElement | HTMLTextAreaElement> = {};
+    const addField = (key: string, label: string, value: string, multiline = false): void => {
       const field = preview.createDiv({ cls: "biblioteka-preview-field" });
       field.createEl("label", { text: label });
       const control = multiline
@@ -333,18 +331,19 @@ class MediaSearchModal extends Modal {
         : field.createEl("input", { cls: "biblioteka-preview-input" });
       control.value = value;
       if (multiline) (control as HTMLTextAreaElement).rows = 5;
-      return control;
+      fields[key] = control;
     };
 
-    addField("Title", details.nameRu || details.nameEn || details.nameOriginal || "");
-    addField("Original title", details.nameOriginal || details.nameEn || "");
-    addField("Year", details.year ? String(details.year) : "");
-    addField("Description", details.description || details.shortDescription || "", true);
-    addField("Genres", (details.genres ?? []).map((x) => x.genre).filter(Boolean).join(", "));
-    addField("Countries", (details.countries ?? []).map((x) => x.country).filter(Boolean).join(", "));
-    addField("Kinopoisk rating", details.ratingKinopoisk == null ? "" : String(details.ratingKinopoisk));
-    addField("IMDb rating", details.ratingImdb == null ? "" : String(details.ratingImdb));
-    addField("Kinopoisk ID", String(details.kinopoiskId));
+    addField("title", "Title", details.nameRu || details.nameEn || details.nameOriginal || "");
+    addField("originalTitle", "Original title", details.nameOriginal || details.nameEn || "");
+    addField("year", "Year", details.year ? String(details.year) : "");
+    addField("description", "Description", details.description || details.shortDescription || "", true);
+    addField("genres", "Genres (comma-separated)", (details.genres ?? []).map((x) => x.genre).filter(Boolean).join(", "));
+    addField("countries", "Countries (comma-separated)", (details.countries ?? []).map((x) => x.country).filter(Boolean).join(", "));
+    addField("ratingKinopoisk", "Kinopoisk rating", details.ratingKinopoisk == null ? "" : String(details.ratingKinopoisk));
+    addField("ratingImdb", "IMDb rating", details.ratingImdb == null ? "" : String(details.ratingImdb));
+    addField("kinopoiskId", "Kinopoisk ID", String(details.kinopoiskId));
+    addField("imdbId", "IMDb ID", details.imdbId || "");
 
     const actions = preview.createDiv({ cls: "biblioteka-preview-actions" });
     const backButton = actions.createEl("button", { text: "Back to results" });
@@ -358,12 +357,97 @@ class MediaSearchModal extends Modal {
       text: "Create note",
       cls: "mod-cta",
     });
-    createButton.disabled = true;
-    createButton.title = "Note creation is the next MVP step.";
-    actions.createEl("span", {
-      text: "Note creation is coming in the next step.",
-      cls: "biblioteka-muted",
-    });
+    createButton.addEventListener("click", () => void this.createNote(details, posterUrl, fields, createButton));
+  }
+
+  private async createNote(
+    details: KinopoiskDetails,
+    posterUrl: string,
+    fields: Record<string, HTMLInputElement | HTMLTextAreaElement>,
+    button: HTMLButtonElement,
+  ): Promise<void> {
+    const read = (key: string): string => fields[key]?.value.trim() ?? "";
+    const title = read("title");
+    if (!title) {
+      new Notice("A title is required to create a note.");
+      fields.title?.focus();
+      return;
+    }
+
+    button.disabled = true;
+    button.setText("Creating…");
+    try {
+      const folder = this.plugin.settings.defaultMediaFolder.trim().replace(/^\\/+|\\/+$/g, "") || "Media";
+      await ensureVaultFolder(this.app, folder);
+
+      let localPosterPath = "";
+      if (posterUrl) {
+        try {
+          const extension = getImageExtension(posterUrl);
+          const posterFolder = `${folder}/_posters`;
+          await ensureVaultFolder(this.app, posterFolder);
+          const posterName = `kinopoisk-${details.kinopoiskId}.${extension}`;
+          const posterPath = `${posterFolder}/${posterName}`;
+          if (!this.app.vault.getAbstractFileByPath(posterPath)) {
+            const response = await requestUrl({ url: posterUrl, method: "GET" });
+            await this.app.vault.createBinary(posterPath, response.arrayBuffer);
+          }
+          localPosterPath = posterPath;
+        } catch (error) {
+          console.warn("Biblioteka: poster download failed", error);
+          new Notice("The note will be created, but the poster could not be downloaded.");
+        }
+      }
+
+      const properties: Record<string, string | number | string[]> = {
+        type: formatMediaType(details.type),
+        kinopoisk_id: Number(read("kinopoiskId")) || details.kinopoiskId,
+      };
+      const originalTitle = read("originalTitle");
+      const year = Number(read("year"));
+      const genres = splitList(read("genres"));
+      const countries = splitList(read("countries"));
+      const kpRating = Number(read("ratingKinopoisk"));
+      const imdbRating = Number(read("ratingImdb"));
+      const imdbId = read("imdbId");
+
+      if (originalTitle) properties.original_title = originalTitle;
+      if (Number.isFinite(year) && year > 0) properties.year = year;
+      if (genres.length) properties.genres = genres;
+      if (countries.length) properties.countries = countries;
+      if (Number.isFinite(kpRating) && read("ratingKinopoisk") !== "") properties.rating_kinopoisk = kpRating;
+      if (Number.isFinite(imdbRating) && read("ratingImdb") !== "") properties.rating_imdb = imdbRating;
+      if (imdbId) properties.imdb_id = imdbId;
+      if (localPosterPath) properties.poster = localPosterPath;
+
+      const frontmatter = Object.entries(properties)
+        .map(([key, value]) => `${key}: ${yamlValue(value)}`)
+        .join("\\n");
+      const body = [
+        `# ${title}`,
+        localPosterPath ? `![[${localPosterPath}]]` : "",
+        read("description"),
+        "",
+        details.webUrl ? `[Kinopoisk](${details.webUrl})` : "",
+      ].filter((line, index, array) => line !== "" || (index > 0 && array[index - 1] !== "")).join("\\n");
+      const content = `---\\n${frontmatter}\\n---\\n\\n${body.trim()}\\n`;
+
+      const baseName = sanitizeFileName(title) || `media-${details.kinopoiskId}`;
+      let notePath = `${folder}/${baseName}.md`;
+      let suffix = 2;
+      while (this.app.vault.getAbstractFileByPath(notePath)) {
+        notePath = `${folder}/${baseName} (${suffix++}).md`;
+      }
+
+      const file = await this.app.vault.create(notePath, content);
+      await this.app.workspace.getLeaf(false).openFile(file);
+      new Notice(`Created: ${notePath}`);
+      this.close();
+    } catch (error) {
+      new Notice(`Could not create note: ${getErrorMessage(error)}`);
+      button.disabled = false;
+      button.setText("Create note");
+    }
   }
 
   onClose(): void {
@@ -424,6 +508,45 @@ function formatMediaType(type?: string): string {
     default:
       return type ?? "";
   }
+}
+
+
+async function ensureVaultFolder(app: App, folderPath: string): Promise<void> {
+  const parts = folderPath.split("/").filter(Boolean);
+  let current = "";
+  for (const part of parts) {
+    current = current ? `${current}/${part}` : part;
+    if (!app.vault.getAbstractFileByPath(current)) {
+      await app.vault.createFolder(current);
+    }
+  }
+}
+
+function sanitizeFileName(value: string): string {
+  return value
+    .replace(/[\\\\/:*?"<>|#^\\[\\]]/g, "")
+    .replace(/[. ]+$/g, "")
+    .replace(/\\s+/g, " ")
+    .slice(0, 100);
+}
+
+function splitList(value: string): string[] {
+  return [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
+}
+
+function yamlValue(value: string | number | string[]): string {
+  return JSON.stringify(value);
+}
+
+function getImageExtension(url: string): string {
+  try {
+    const pathname = new URL(url).pathname.toLowerCase();
+    const match = pathname.match(/\\.(jpe?g|png|webp|gif)$/);
+    if (match) return match[1] === "jpeg" ? "jpg" : match[1];
+  } catch {
+    // Fall back to a broadly supported image format.
+  }
+  return "jpg";
 }
 
 function getErrorMessage(error: unknown): string {
