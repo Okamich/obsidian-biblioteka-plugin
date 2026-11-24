@@ -1,4 +1,5 @@
 import {
+  AbstractInputSuggest,
   App,
   Modal,
   Notice,
@@ -6,6 +7,7 @@ import {
   PluginSettingTab,
   Setting,
   TFile,
+  TFolder,
   requestUrl,
 } from "obsidian";
 import {
@@ -147,16 +149,17 @@ class BibliotekaSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Default media folder")
-      .setDesc("Vault folder used for generated media notes.")
-      .addText((text) =>
+      .setDesc("Vault folder used for generated media notes. Start typing to see existing folders.")
+      .addText((text) => {
         text
           .setPlaceholder("Media")
           .setValue(this.plugin.settings.defaultMediaFolder)
           .onChange(async (value) => {
             this.plugin.settings.defaultMediaFolder = value.trim() || "Media";
             await this.plugin.saveSettings();
-          }),
-      );
+          });
+        new FolderSuggest(this.app, text.inputEl);
+      });
 
     containerEl.createEl("h3", { text: "Content filtering" });
     new Setting(containerEl)
@@ -261,6 +264,37 @@ class BibliotekaSettingTab extends PluginSettingTab {
           }
         }),
       );
+  }
+}
+
+class FolderSuggest extends AbstractInputSuggest<string> {
+  private readonly folders: string[];
+
+  constructor(app: App, inputEl: HTMLInputElement) {
+    super(app, inputEl);
+    this.folders = app.vault
+      .getAllLoadedFiles()
+      .filter((file) => file instanceof TFolder)
+      .map((folder) => folder.path)
+      .sort((a, b) => a.localeCompare(b));
+  }
+
+  getSuggestions(inputStr: string): string[] {
+    const query = inputStr.trim().toLocaleLowerCase();
+    if (!query) return this.folders.slice(0, 50);
+    return this.folders
+      .filter((folder) => folder.toLocaleLowerCase().includes(query))
+      .slice(0, 50);
+  }
+
+  renderSuggestion(folder: string, el: HTMLElement): void {
+    el.setText(folder);
+  }
+
+  selectSuggestion(folder: string): void {
+    this.setValue(folder);
+    this.inputEl.dispatchEvent(new Event("input", { bubbles: true }));
+    this.close();
   }
 }
 
