@@ -157,8 +157,7 @@ class MediaSearchModal extends Modal {
 
     const controls = contentEl.createDiv({ cls: "biblioteka-search-controls" });
     this.queryInput = controls.createEl("input", {
-      type: "search",
-      placeholder: "Enter a title…",
+      attr: { type: "search", placeholder: "Enter a title…" },
     });
     this.queryInput.setAttribute("aria-label", "Media title");
 
