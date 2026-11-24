@@ -87,7 +87,7 @@ export default class BibliotekaPlugin extends Plugin {
         if (!Number.isInteger(id) || id <= 0) continue;
 
         const details = await provider.getDetails(id);
-        const ratings = buildRatings(details, omdbDetails);
+        const ratings = buildRatings(details);
         if (ratings.length === 0) continue;
 
         await this.app.fileManager.processFrontMatter(file, (fm) => {
@@ -576,7 +576,7 @@ class MediaSearchModal extends Modal {
         }
       }
 
-      const ratings = buildRatings(details);
+      const ratings = buildRatings(details, omdbDetails);
       const properties: Record<string, string | number | string[] | Array<{ source: string; value: number; votes?: number; url?: string }>> = {
         type: formatMediaType(details.type),
         kinopoisk_id: Number(read("kinopoiskId")) || details.kinopoiskId,
