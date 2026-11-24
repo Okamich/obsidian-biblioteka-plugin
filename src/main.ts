@@ -191,6 +191,51 @@ class BibliotekaSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName("OMDb API key")
+      .setDesc("Optional secondary provider. Get a free key from OMDb; the key is stored in plugin settings.")
+      .addText((text) => {
+        text.inputEl.type = "password";
+        text
+          .setPlaceholder("Enter OMDb API key")
+          .setValue(this.plugin.settings.omdbApiKey)
+          .onChange(async (value) => {
+            this.plugin.settings.omdbApiKey = value.trim();
+            await this.plugin.saveSettings();
+          });
+      })
+      .addButton((button) =>
+        button
+          .setButtonText("Get API key")
+          .onClick(() => {
+            window.open("https://www.omdbapi.com/apikey.aspx", "_blank");
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("OMDb connection")
+      .setDesc("Verify the OMDb API key with a small IMDb-ID lookup.")
+      .addButton((button) =>
+        button.setButtonText("Test connection").onClick(async () => {
+          const key = this.plugin.settings.omdbApiKey.trim();
+          if (!key) {
+            new Notice("Enter your OMDb API key first.");
+            return;
+          }
+          button.setButtonText("Testing…");
+          button.setDisabled(true);
+          try {
+            await new OMDbProvider(key).testConnection();
+            new Notice("OMDb API connection successful.");
+          } catch (error) {
+            new Notice(`OMDb connection failed: ${getErrorMessage(error)}`);
+          } finally {
+            button.setButtonText("Test connection");
+            button.setDisabled(false);
+          }
+        }),
+      );
+
+    new Setting(containerEl)
       .setName("Connection")
       .setDesc("Send a small test search request to verify the API key.")
       .addButton((button) =>
