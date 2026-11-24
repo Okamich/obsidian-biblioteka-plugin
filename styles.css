@@ -1,10 +1,78 @@
-/* Biblioteka — plugin styles */
-
-.biblioteka-modal {
-  min-width: min(560px, 90vw);
+.biblioteka-search-modal {
+  width: min(760px, 90vw);
 }
 
-.biblioteka-status {
+.biblioteka-muted {
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  font-size: var(--font-smaller);
+}
+
+.biblioteka-error {
+  color: var(--text-error);
+}
+
+.biblioteka-search-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  margin: 1rem 0;
+}
+
+.biblioteka-search-controls input,
+.biblioteka-search-controls select {
+  min-width: 0;
+  width: 100%;
+}
+
+.biblioteka-search-results {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 55vh;
+  overflow-y: auto;
+  margin-top: 1rem;
+}
+
+.biblioteka-result {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+}
+
+.biblioteka-result-poster {
+  width: 64px;
+  height: 92px;
+  flex: 0 0 64px;
+  object-fit: cover;
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+}
+
+.biblioteka-result-info {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.biblioteka-result-select {
+  align-self: flex-start;
+}
+
+@media (max-width: 520px) {
+  .biblioteka-search-controls {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .biblioteka-search-controls input {
+    grid-column: 1 / -1;
+  }
+
+  .biblioteka-result {
+    align-items: flex-start;
+  }
 }
