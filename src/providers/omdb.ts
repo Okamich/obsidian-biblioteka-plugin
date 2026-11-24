@@ -87,8 +87,13 @@ export class OMDbProvider {
   }
 
   async testConnection(): Promise<void> {
-    // The Matrix is used only as a lightweight, known IMDb-ID connectivity check.
-    await this.getDetails("tt0133093");
+    // Exercise both endpoints using a stable, well-known title.
+    const results = await this.search("The Matrix", 1, "movie");
+    const firstMatch = results.Search?.[0];
+    if (!firstMatch?.imdbID) {
+      throw new Error("OMDb search returned no usable result for the connection test.");
+    }
+    await this.getDetails(firstMatch.imdbID);
   }
 
   async search(
