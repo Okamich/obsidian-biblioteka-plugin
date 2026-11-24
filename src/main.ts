@@ -543,6 +543,18 @@ class MediaSearchModal extends Modal {
               await this.app.workspace.getLeaf(false).openFile(file);
               this.close();
             },
+            async (file) => {
+              button.setText("Updating…");
+              try {
+                await updateExistingNote(this.app, file, details, fields, omdbDetails);
+                new Notice(`Updated: ${file.path}`);
+                this.close();
+              } catch (error) {
+                new Notice(`Could not update note: ${getErrorMessage(error)}`);
+                button.disabled = false;
+                button.setText("Create note");
+              }
+            },
             () => void this.createNote(details, posterUrl, fields, button, omdbDetails, true),
             () => {
               button.disabled = false;
@@ -749,6 +761,7 @@ class DuplicateWarningModal extends Modal {
     app: App,
     private readonly matches: DuplicateMatch[],
     private readonly onOpenFile: (file: TFile) => void | Promise<void>,
+    private readonly onUpdateFile: (file: TFile) => void | Promise<void>,
     private readonly onContinue: () => void,
     private readonly onCancel: () => void,
   ) {
@@ -759,18 +772,25 @@ class DuplicateWarningModal extends Modal {
     this.contentEl.empty();
     this.contentEl.createEl("h2", { text: "Possible duplicate found" });
     this.contentEl.createEl("p", {
-      text: "Biblioteka found an existing note that may describe this movie or series. You can open it or create another note anyway.",
+      text: "Biblioteka found an existing note that may describe this movie or series. You can open it, update it with missing information, or create a separate copy.",
     });
 
     for (const match of this.matches.slice(0, 8)) {
       const row = this.contentEl.createDiv({ cls: "biblioteka-duplicate-match" });
       row.createEl("strong", { text: match.file.basename });
       row.createEl("p", { text: match.reason, cls: "biblioteka-muted" });
-      const openButton = row.createEl("button", { text: "Open this note" });
+      const rowActions = row.createDiv({ cls: "biblioteka-preview-actions" });
+      const openButton = rowActions.createEl("button", { text: "Open this note" });
       openButton.addEventListener("click", () => {
         this.resolved = true;
         void this.onOpenFile(match.file);
         this.close();
+      });
+      const updateButton = rowActions.createEl("button", { text: "Update existing note" });
+      updateButton.addEventListener("click", () => {
+        this.resolved = true;
+        this.close();
+        void this.onUpdateFile(match.file);
       });
     }
 
@@ -782,7 +802,7 @@ class DuplicateWarningModal extends Modal {
     }
 
     const actions = this.contentEl.createDiv({ cls: "biblioteka-preview-actions" });
-    const continueButton = actions.createEl("button", { text: "Create anyway", cls: "mod-cta" });
+    const continueButton = actions.createEl("button", { text: "Create copy", cls: "mod-cta" });
     continueButton.addEventListener("click", () => {
       this.resolved = true;
       this.close();
@@ -800,6 +820,97 @@ class DuplicateWarningModal extends Modal {
     this.contentEl.empty();
     if (!this.resolved) this.onCancel();
   }
+}
+
+async function updateExistingNote(
+  app: App,
+  file: TFile,
+  details: KinopoiskDetails,
+  fields: Record<string, HTMLInputElement | HTMLTextAreaElement>,
+  omdbDetails?: OMDbDetails,
+): Promise<void> {
+  const read = (key: string): string => fields[key]?.value.trim() ?? "";
+  const ratings = buildRatings(details, omdbDetails);
+  const candidateProperties: Record<string, unknown> = {
+    type: formatMediaType(details.type),
+    kinopoisk_id: Number(read("kinopoiskId")) || details.kinopoiskId,
+  };
+
+  const originalTitle = read("originalTitle");
+  const year = Number(read("year"));
+  const genres = splitList(read("genres"));
+  const countries = splitList(read("countries"));
+  const kpRating = Number(read("ratingKinopoisk"));
+  const imdbRating = Number(read("ratingImdb"));
+  const imdbId = read("imdbId");
+  const optionalFields: Record<string, unknown> = {
+    original_title: originalTitle,
+    ...(Number.isFinite(year) && year > 0 ? { year } : {}),
+    ...(genres.length ? { genres } : {}),
+    ...(countries.length ? { countries } : {}),
+    ...(read("ratingKinopoisk") !== "" && Number.isFinite(kpRating) ? { rating_kinopoisk: kpRating } : {}),
+    ...(read("ratingImdb") !== "" && Number.isFinite(imdbRating) ? { rating_imdb: imdbRating } : {}),
+    imdb_id: imdbId,
+    director: read("director"),
+    writer: read("writer"),
+    actors: read("actors"),
+    runtime: read("runtime"),
+    language: read("language"),
+    awards: read("awards"),
+    rated: read("rated"),
+    metascore: read("metascore"),
+  };
+  for ( (const [key, value] of Object.entries(optionalFields)) ) {
+    if (value !== "" && value !== undefined) candidateProperties[key] = value;
+  }
+
+  await app.fileManager.processFrontMatter(file, (fm) => {
+    for (const [key, value] of Object.entries(candidateProperties)) {
+      const current = fm[key];
+      const isMissing = current === undefined || current === null || current === "";
+      if (isMissing) fm[key] = value;
+    }
+    // Ratings are the one intentional exception: always refresh them from the current providers.
+    if (ratings.length) fm.ratings = ratings;
+  });
+
+  const current = await app.vault.read(file);
+  let next = current;
+  const start = "<!-- biblioteka:ratings:start -->";
+  const end = "<!-- biblioteka:ratings:end -->";
+  if (ratings.length) {
+    const block = [start, "## Ratings", "", renderRatingsTable(ratings), end].join("\n");
+    const startIndex = next.indexOf(start);
+    const endIndex = next.indexOf(end);
+    if (startIndex >= 0 && endIndex > startIndex) {
+      next = next.slice(0, startIndex) + block + next.slice(endIndex + end.length);
+    } else {
+      next = `${next.trimEnd()}\n\n${block}\n`;
+    }
+  }
+
+  const description = read("description");
+  if (description) {
+    const body = next.replace(/^---\n[\s\S]*?\n---\n?/, "").trim();
+    const meaningfulBody = body
+      .replace(/^# .*$/m, "")
+      .replace(/!\[\[[^\]]+\]\]/g, "")
+      .replace(/\[Kinopoisk\]\([^\)]+\)/g, "")
+      .replace(/<!-- biblioteka:ratings:start -->[\s\S]*?<!-- biblioteka:ratings:end -->/g, "")
+      .trim();
+    if (!meaningfulBody) {
+      const heading = `# ${read("title")}\n`;
+      const headingIndex = next.indexOf(heading);
+      if (headingIndex >= 0) {
+        const insertAt = headingIndex + heading.length;
+        next = `${next.slice(0, insertAt)}\n${description}\n${next.slice(insertAt)}`;
+      } else {
+        next = `${next.trimEnd()}\n\n${description}\n`;
+      }
+    }
+  }
+
+  if (next !== current) await app.vault.modify(file, next);
 }
 
 async function findDuplicateNotes(
