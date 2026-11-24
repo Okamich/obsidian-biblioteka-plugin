@@ -45,8 +45,69 @@ export default class BibliotekaPlugin extends Plugin {
       },
     });
 
+    this.addCommand({
+      id: "refresh-ratings",
+      name: "Refresh Ratings",
+      callback: () => void this.refreshRatings(),
+    });
+
     this.addSettingTab(new BibliotekaSettingTab(this.app, this));
     console.log("Biblioteka loaded");
+  }
+
+  private async refreshRatings(): Promise<void> {
+    const files = this.app.vault.getMarkdownFiles();
+    const targets = files.filter((file) => {
+      const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+      return Number(frontmatter?.kinopoisk_id) > 0;
+    });
+
+    if (targets.length === 0) {
+      new Notice("No Biblioteka notes with a Kinopoisk ID were found.");
+      return;
+    }
+
+    const provider = new KinopoiskProvider(this.settings.kinopoiskApiKey);
+    let updated = 0;
+    let failed = 0;
+
+    new Notice(`Refreshing ratings for ${targets.length} note(s)…`);
+    for (const file of targets) {
+      try {
+        const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+        const id = Number(frontmatter?.kinopoisk_id);
+        if (!Number.isInteger(id) || id <= 0) continue;
+
+        const details = await provider.getDetails(id);
+        const ratings = buildRatings(details);
+        if (ratings.length === 0) continue;
+
+        await this.app.fileManager.processFrontMatter(file, (fm) => {
+          fm.ratings = ratings;
+        });
+
+        const current = await this.app.vault.read(file);
+        const table = renderRatingsTable(ratings);
+        const start = "<!-- biblioteka:ratings:start -->";
+        const end = "<!-- biblioteka:ratings:end -->";
+        const block = [start, "## Ratings", "", table, end].join("\\n");
+        const startIndex = current.indexOf(start);
+        const endIndex = current.indexOf(end);
+        let next: string;
+        if (startIndex >= 0 && endIndex > startIndex) {
+          next = current.slice(0, startIndex) + block + current.slice(endIndex + end.length);
+        } else {
+          next = `${current.trimEnd()}\\n\\n${block}\\n`;
+        }
+        await this.app.vault.modify(file, next);
+        updated++;
+      } catch (error) {
+        failed++;
+        console.warn(`Biblioteka: could not refresh ratings for ${file.path}`, error);
+      }
+    }
+
+    new Notice(`Ratings refreshed: ${updated}. Failed: ${failed}.`);
   }
 
   async loadSettings(): Promise<void> {
@@ -425,7 +486,7 @@ class MediaSearchModal extends Modal {
         }
       }
 
-      const properties: Record<string, string | number | string[]> = {
+      const ratings = buildRatings(details);\n      const properties: Record<string, string | number | string[] | Record<string, string | number>[]> = {
         type: formatMediaType(details.type),
         kinopoisk_id: Number(read("kinopoiskId")) || details.kinopoiskId,
       };
@@ -443,7 +504,7 @@ class MediaSearchModal extends Modal {
       if (countries.length) properties.countries = countries;
       if (Number.isFinite(kpRating) && read("ratingKinopoisk") !== "") properties.rating_kinopoisk = kpRating;
       if (Number.isFinite(imdbRating) && read("ratingImdb") !== "") properties.rating_imdb = imdbRating;
-      if (imdbId) properties.imdb_id = imdbId;
+      if (imdbId) properties.imdb_id = imdbId;\n      if (ratings.length) properties.ratings = ratings;
       if (localPosterPath) properties.poster = localPosterPath;
 
       const frontmatter = Object.entries(properties)
@@ -454,7 +515,7 @@ class MediaSearchModal extends Modal {
         localPosterPath ? `![[${localPosterPath}]]` : "",
         read("description"),
         "",
-        details.webUrl ? `[Kinopoisk](${details.webUrl})` : "",
+        details.webUrl ? `[Kinopoisk](${details.webUrl})` : "",\n        ratings.length ? [ "", "<!-- biblioteka:ratings:start -->", "## Ratings", "", renderRatingsTable(ratings), "<!-- biblioteka:ratings:end -->" ].join("\\n") : "",
       ].filter((line, index, array) => line !== "" || (index > 0 && array[index - 1] !== "")).join("\n");
       const content = `---\n${frontmatter}\n---\n\n${body.trim()}\n`;
 
@@ -483,7 +544,60 @@ class MediaSearchModal extends Modal {
 
 
 
-interface DuplicateMatch {
+
+interface MediaRating {
+  source: string;
+  value: number;
+  votes?: number;
+  url?: string;
+}
+
+function buildRatings(details: KinopoiskDetails): MediaRating[] {
+  const ratings: MediaRating[] = [];
+  if (typeof details.ratingKinopoisk === "number") {
+    ratings.push({
+      source: "Kinopoisk",
+      value: details.ratingKinopoisk,
+      ...(typeof details.ratingKinopoiskVoteCount === "number"
+        ? { votes: details.ratingKinopoiskVoteCount }
+        : {}),
+      ...(details.webUrl ? { url: details.webUrl } : {}),
+    });
+  }
+  if (typeof details.ratingImdb === "number") {
+    ratings.push({
+      source: "IMDb",
+      value: details.ratingImdb,
+      ...(typeof details.ratingImdbVoteCount === "number"
+        ? { votes: details.ratingImdbVoteCount }
+        : {}),
+      ...(details.imdbId ? { url: `https://www.imdb.com/title/${details.imdbId}/` } : {}),
+    });
+  }
+  return ratings;
+}
+
+function renderRatingsTable(ratings: MediaRating[]): string {
+  const rows = ratings.map((rating) => {
+    const source = rating.url
+      ? `[${escapeMarkdownTable(rating.source)}](${rating.url})`
+      : escapeMarkdownTable(rating.source);
+    const votes = typeof rating.votes === "number"
+      ? rating.votes.toLocaleString("en-US")
+      : "—";
+    return `| ${source} | ${rating.value} | ${votes} |`;
+  });
+  return [
+    "| Source | Rating | Votes |",
+    "|---|---:|---:|",
+    ...rows,
+  ].join("\\n");
+}
+
+function escapeMarkdownTable(value: string): string {
+  return value.replace(/\\|/g, "\\\\|").replace(/[\\r\\n]+/g, " ");
+}
+\ninterface DuplicateMatch {
   file: TFile;
   reason: string;
 }
