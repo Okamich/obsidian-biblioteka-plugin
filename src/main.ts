@@ -807,8 +807,8 @@ function splitList(value: string): string[] {
   return [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
 }
 
-function yamlValue(value: string | number | string[]): string {
-  return JSON.stringify(value);
+function yamlValue(value: unknown): string {
+  return JSON.stringify(value) ?? "null";
 }
 
 function getImageExtension(url: string): string {
