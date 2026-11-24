@@ -5,6 +5,7 @@ import {
   Plugin,
   PluginSettingTab,
   Setting,
+  TFile,
   requestUrl,
 } from "obsidian";
 import {
@@ -365,6 +366,7 @@ class MediaSearchModal extends Modal {
     posterUrl: string,
     fields: Record<string, HTMLInputElement | HTMLTextAreaElement>,
     button: HTMLButtonElement,
+    skipDuplicateCheck = false,
   ): Promise<void> {
     const read = (key: string): string => fields[key]?.value.trim() ?? "";
     const title = read("title");
@@ -375,8 +377,32 @@ class MediaSearchModal extends Modal {
     }
 
     button.disabled = true;
-    button.setText("Creating…");
+    button.setText(skipDuplicateCheck ? "Creating…" : "Checking duplicates…");
     try {
+      if (!skipDuplicateCheck) {
+        const candidateId = Number(read("kinopoiskId")) || details.kinopoiskId;
+        const candidateYear = Number(read("year")) || details.year || 0;
+        const candidateType = formatMediaType(details.type);
+        const duplicates = await findDuplicateNotes(this.app, candidateId, title, candidateYear, candidateType);
+        if (duplicates.length > 0) {
+          new DuplicateWarningModal(
+            this.app,
+            duplicates,
+            async (file) => {
+              await this.app.workspace.getLeaf(false).openFile(file);
+              this.close();
+            },
+            () => void this.createNote(details, posterUrl, fields, button, true),
+            () => {
+              button.disabled = false;
+              button.setText("Create note");
+            },
+          ).open();
+          return;
+        }
+      }
+
+      button.setText("Creating…");
       const folder = this.plugin.settings.defaultMediaFolder.trim().replace(/^\/+|\/+$/g, "") || "Media";
       await ensureVaultFolder(this.app, folder);
 
@@ -455,6 +481,124 @@ class MediaSearchModal extends Modal {
   }
 }
 
+
+
+interface DuplicateMatch {
+  file: TFile;
+  reason: string;
+}
+
+class DuplicateWarningModal extends Modal {
+  constructor(
+    app: App,
+    private readonly matches: DuplicateMatch[],
+    private readonly onOpenFile: (file: TFile) => void | Promise<void>,
+    private readonly onContinue: () => void,
+    private readonly onCancel: () => void,
+  ) {
+    super(app);
+  }
+
+  onOpen(): void {
+    this.contentEl.empty();
+    this.contentEl.createEl("h2", { text: "Possible duplicate found" });
+    this.contentEl.createEl("p", {
+      text: "Biblioteka found an existing note that may describe this movie or series. You can open it or create another note anyway.",
+    });
+
+    for (const match of this.matches.slice(0, 8)) {
+      const row = this.contentEl.createDiv({ cls: "biblioteka-duplicate-match" });
+      row.createEl("strong", { text: match.file.basename });
+      row.createEl("p", { text: match.reason, cls: "biblioteka-muted" });
+      const openButton = row.createEl("button", { text: "Open this note" });
+      openButton.addEventListener("click", () => {
+        void this.onOpenFile(match.file);
+        this.close();
+      });
+    }
+
+    if (this.matches.length > 8) {
+      this.contentEl.createEl("p", {
+        text: `And ${this.matches.length - 8} more possible match(es).`,
+        cls: "biblioteka-muted",
+      });
+    }
+
+    const actions = this.contentEl.createDiv({ cls: "biblioteka-preview-actions" });
+    const continueButton = actions.createEl("button", { text: "Create anyway", cls: "mod-cta" });
+    continueButton.addEventListener("click", () => {
+      this.close();
+      this.onContinue();
+    });
+    const cancelButton = actions.createEl("button", { text: "Cancel" });
+    cancelButton.addEventListener("click", () => {
+      this.close();
+      this.onCancel();
+    });
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}
+
+async function findDuplicateNotes(
+  app: App,
+  kinopoiskId: number,
+  title: string,
+  year: number,
+  mediaType: string,
+): Promise<DuplicateMatch[]> {
+  const titleKey = normalizeDuplicateTitle(title);
+  const typeKey = normalizeMediaType(mediaType);
+  const matches: DuplicateMatch[] = [];
+
+  for (const file of app.vault.getMarkdownFiles()) {
+    const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter;
+    if (!frontmatter) continue;
+
+    const existingId = String(frontmatter.kinopoisk_id ?? "").trim();
+    if (existingId && existingId === String(kinopoiskId)) {
+      matches.push({ file, reason: `Same Kinopoisk ID: ${kinopoiskId}` });
+      continue;
+    }
+
+    const existingTitle = normalizeDuplicateTitle(String(frontmatter.title ?? file.basename));
+    const existingYear = Number(frontmatter.year);
+    const existingType = normalizeMediaType(String(frontmatter.type ?? ""));
+
+    if (
+      titleKey &&
+      existingTitle === titleKey &&
+      year > 0 &&
+      existingYear === year &&
+      typeKey !== "" &&
+      existingType === typeKey
+    ) {
+      matches.push({ file, reason: `Matching title, year (${year}) and media type.` });
+    }
+  }
+
+  return matches;
+}
+
+function normalizeDuplicateTitle(value: string): string {
+  return value
+    .normalize("NFKC")
+    .toLocaleLowerCase()
+    .replace(/[’‘']/g, "")
+    .replace(/[^\\p{L}\\p{N}]+/gu, " ")
+    .trim()
+    .replace(/\\s+/g, " ");
+}
+
+function normalizeMediaType(value: string): string {
+  const normalized = value.trim().toLocaleLowerCase();
+  if (/movie|film/.test(normalized)) return "movie";
+  if (/series/.test(normalized)) return "series";
+  if (/tv show/.test(normalized)) return "tv show";
+  return normalized;
+}
 
 /**
  * Metadata-based SFW filter.
