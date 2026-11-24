@@ -292,26 +292,36 @@ class MediaSearchModal extends Modal {
 
 
 /**
- * Conservative metadata-based SFW filter.
- * Age ratings such as 18+ are intentionally ignored: they do not by themselves
- * indicate pornographic content.
+ * Metadata-based SFW filter.
+ * This intentionally targets erotic/adult productions and explicit sexual
+ * descriptions, not ordinary age-restricted movies or incidental mature themes.
  */
 function isExplicitAdultContent(item: KinopoiskSearchItem): boolean {
+  const genreNames = (item.genres ?? []).map((genre) =>
+    typeof genre === "string" ? genre : genre.genre ?? "",
+  );
+
   const metadata = [
     item.nameRu,
     item.nameEn,
     item.nameOriginal,
     item.description,
-    ...(item.genres ?? []).map((genre) => genre.genre),
+    ...genreNames,
   ]
     .filter(Boolean)
     .join(" ")
+    .normalize("NFKC")
     .toLocaleLowerCase();
 
+  // Kinopoisk does not consistently expose a dedicated "erotica" genre.
+  // Check titles, descriptions and any genre labels that are available.
   const explicitTerms =
-    /(?:^|[^\\p{L}\\p{N}])(?:порно(?:граф(?:ия|ический|ическую|ического))?|порнография|для\\s+взрослых|xxx|hentai|хентай|porn(?:ography)?|hardcore)(?:$|[^\\p{L}\\p{N}])/iu;
+    /(?:^|[^\\p{L}\\p{N}])(?:порно(?:граф\w*)?|эротик\w*|нимфоман\w*|для\\s+взрослых|xxx|хентай|hentai|porn(?:ography)?|erotic\w*|nymphomaniac|nymphomania|sexploitation|softcore|hardcore|adult\\s+(?:film|content))(?:$|[^\\p{L}\\p{N}])/iu;
 
-  return explicitTerms.test(metadata);
+  const explicitPhrases =
+    /(?:откровенн\w*\\s+(?:сексуальн\w*\\s+)?сцен\w*|сцен\w*\\s+(?:откровенного\\s+)?секс\w*|explicit\\s+(?:sexual\\s+)?content|graphic\\s+sex(?:ual)?)/iu;
+
+  return explicitTerms.test(metadata) || explicitPhrases.test(metadata);
 }
 
 function matchesKind(item: KinopoiskSearchItem, kind: MediaKind): boolean {
