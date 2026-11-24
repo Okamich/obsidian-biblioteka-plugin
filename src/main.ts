@@ -16,7 +16,7 @@ import {
   KinopoiskDetails,
   MediaKind,
 } from "./providers/kinopoisk";
-import { OMDbProvider, OMDbDetails } from "./providers/omdb";
+import { OMDbProvider, OMDbDetails, OMDbSearchItem } from "./providers/omdb";
 
 interface BibliotekaSettings {
   defaultMediaFolder: string;
@@ -25,6 +25,8 @@ interface BibliotekaSettings {
   kinopoiskApiKey: string;
   omdbApiKey: string;
   sfwFilter: boolean;
+  enabledProviders: { kinopoisk: boolean; omdb: boolean };
+  providerOrder: Array<"kinopoisk" | "omdb">;
 }
 
 const DEFAULT_SETTINGS: BibliotekaSettings = {
@@ -34,6 +36,8 @@ const DEFAULT_SETTINGS: BibliotekaSettings = {
   kinopoiskApiKey: "",
   omdbApiKey: "",
   sfwFilter: true,
+  enabledProviders: { kinopoisk: true, omdb: true },
+  providerOrder: ["kinopoisk", "omdb"],
 };
 
 export default class BibliotekaPlugin extends Plugin {
@@ -46,8 +50,8 @@ export default class BibliotekaPlugin extends Plugin {
       id: "add-media",
       name: "Add media",
       callback: () => {
-        if (!this.settings.kinopoiskApiKey.trim()) {
-          new Notice("Add your Kinopoisk API key in Biblioteka settings first.");
+        if (!getEnabledProviderIds(this.settings).some((id) => this.settings[id === "kinopoisk" ? "kinopoiskApiKey" : "omdbApiKey"].trim())) {
+          new Notice("Enable at least one provider and add its API key in Biblioteka settings.");
           return;
         }
         new MediaSearchModal(this.app, this).open();
@@ -125,7 +129,17 @@ export default class BibliotekaPlugin extends Plugin {
   }
 
   async loadSettings(): Promise<void> {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const saved = await this.loadData();
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, saved);
+    this.settings.enabledProviders = {
+      ...DEFAULT_SETTINGS.enabledProviders,
+      ...(saved?.enabledProviders ?? {}),
+    };
+    const savedOrder = Array.isArray(saved?.providerOrder) ? saved.providerOrder : [];
+    this.settings.providerOrder = [
+      ...savedOrder.filter((id: string) => id === "kinopoisk" || id === "omdb"),
+      ...DEFAULT_SETTINGS.providerOrder.filter((id) => !savedOrder.includes(id)),
+    ];
   }
 
   async saveSettings(): Promise<void> {
@@ -264,6 +278,71 @@ class BibliotekaSettingTab extends PluginSettingTab {
 
     containerEl.createEl("h3", { text: "Movies" });
     containerEl.createEl("p", {
+      text: "Choose search sources and drag them to set the order used for search and metadata priority.",
+      cls: "biblioteka-muted",
+    });
+
+    const providerRows = containerEl.createDiv({ cls: "biblioteka-provider-list" });
+    const renderProviderRows = (): void => {
+      providerRows.empty();
+      for (const providerId of this.plugin.settings.providerOrder) {
+        const label = providerId === "kinopoisk" ? "Kinopoisk" : "OMDb";
+        const enabled = this.plugin.settings.enabledProviders[providerId];
+        const row = providerRows.createDiv({ cls: "biblioteka-provider-row" });
+        row.draggable = true;
+        const handle = row.createSpan({ text: "☰", cls: "biblioteka-provider-handle" });
+        handle.setAttribute("aria-label", "Drag to reorder");
+        row.createSpan({ text: label, cls: "biblioteka-provider-name" });
+        const toggle = row.createEl("input", { attr: { type: "checkbox" } });
+        toggle.checked = enabled;
+        toggle.setAttribute("aria-label", `Enable ${label}`);
+        toggle.addEventListener("change", async () => {
+          this.plugin.settings.enabledProviders[providerId] = toggle.checked;
+          await this.plugin.saveSettings();
+          renderProviderRows();
+        });
+        const up = row.createEl("button", { text: "↑", cls: "biblioteka-provider-move" });
+        up.setAttribute("aria-label", `Move ${label} up`);
+        up.disabled = this.plugin.settings.providerOrder[0] === providerId;
+        up.addEventListener("click", () => void moveProvider(providerId, -1));
+        const down = row.createEl("button", { text: "↓", cls: "biblioteka-provider-move" });
+        down.setAttribute("aria-label", `Move ${label} down`);
+        down.disabled = this.plugin.settings.providerOrder[this.plugin.settings.providerOrder.length - 1] === providerId;
+        down.addEventListener("click", () => void moveProvider(providerId, 1));
+        row.addEventListener("dragstart", (event) => {
+          event.dataTransfer?.setData("text/plain", providerId);
+          if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+          row.addClass("is-dragging");
+        });
+        row.addEventListener("dragend", () => row.removeClass("is-dragging"));
+        row.addEventListener("dragover", (event) => event.preventDefault());
+        row.addEventListener("drop", (event) => {
+          event.preventDefault();
+          const dragged = event.dataTransfer?.getData("text/plain") as "kinopoisk" | "omdb";
+          if (!dragged || dragged === providerId) return;
+          const order = [...this.plugin.settings.providerOrder];
+          const from = order.indexOf(dragged);
+          const to = order.indexOf(providerId);
+          if (from < 0 || to < 0) return;
+          order.splice(from, 1);
+          order.splice(to, 0, dragged);
+          this.plugin.settings.providerOrder = order;
+          void this.plugin.saveSettings().then(renderProviderRows);
+        });
+      }
+    };
+    const moveProvider = async (providerId: "kinopoisk" | "omdb", direction: -1 | 1): Promise<void> => {
+      const order = [...this.plugin.settings.providerOrder];
+      const from = order.indexOf(providerId);
+      const to = from + direction;
+      if (to < 0 || to >= order.length) return;
+      [order[from], order[to]] = [order[to], order[from]];
+      this.plugin.settings.providerOrder = order;
+      await this.plugin.saveSettings();
+      renderProviderRows();
+    };
+    renderProviderRows();
+    containerEl.createEl("p", {
       text: "Settings for movies and TV series.",
       cls: "biblioteka-muted",
     });
@@ -330,6 +409,18 @@ class FolderSuggest extends AbstractInputSuggest<string> {
   }
 }
 
+interface UnifiedSearchResult {
+  source: "kinopoisk" | "omdb";
+  id: string;
+  title: string;
+  year: number;
+  type: string;
+  posterUrl: string;
+  rating?: string | number;
+  kinopoiskItem?: KinopoiskSearchItem;
+  omdbItem?: OMDbSearchItem;
+}
+
 class MediaSearchModal extends Modal {
   private readonly plugin: BibliotekaPlugin;
   private resultsEl: HTMLElement;
@@ -350,7 +441,7 @@ class MediaSearchModal extends Modal {
 
     contentEl.createEl("h2", { text: "Add media" });
     contentEl.createEl("p", {
-      text: "Search movies and TV series on Kinopoisk.",
+      text: "Search movies and TV series across enabled providers.",
       cls: "biblioteka-muted",
     });
 
@@ -391,31 +482,68 @@ class MediaSearchModal extends Modal {
     this.searchButton.disabled = true;
     this.searchButton.setText("Searching…");
     this.resultsEl.empty();
-    this.resultsEl.createEl("p", { text: "Searching Kinopoisk…" });
+    this.resultsEl.createEl("p", { text: "Searching enabled providers…" });
 
     try {
-      const provider = new KinopoiskProvider(this.plugin.settings.kinopoiskApiKey);
-      const response = await provider.search(query);
       const kind = this.kindSelect.value as MediaKind;
-      const kindMatches = (response.films ?? []).filter((item) => matchesKind(item, kind));
-      const items = this.plugin.settings.sfwFilter
-        ? kindMatches.filter((item) => !isExplicitAdultContent(item))
-        : kindMatches;
-      const hiddenCount = kindMatches.length - items.length;
+      const items: UnifiedSearchResult[] = [];
+      const failures: string[] = [];
+      const providerIds = getEnabledProviderIds(this.plugin.settings);
+      for (const providerId of providerIds) {
+        try {
+          if (providerId === "kinopoisk") {
+            const key = this.plugin.settings.kinopoiskApiKey.trim();
+            if (!key) { failures.push("Kinopoisk: API key missing"); continue; }
+            const response = await new KinopoiskProvider(key).search(query);
+            const matches = (response.films ?? []).filter((item) => matchesKind(item, kind));
+            const filtered = this.plugin.settings.sfwFilter
+              ? matches.filter((item) => !isExplicitAdultContent(item))
+              : matches;
+            for (const item of filtered) items.push({
+              source: "kinopoisk",
+              id: String(item.filmId),
+              title: item.nameRu || item.nameEn || item.nameOriginal || "Untitled",
+              year: item.year ?? 0,
+              type: formatMediaType(item.type),
+              posterUrl: item.posterUrlPreview || item.posterUrl || "",
+              rating: item.rating,
+              kinopoiskItem: item,
+            });
+          } else {
+            const key = this.plugin.settings.omdbApiKey.trim();
+            if (!key) { failures.push("OMDb: API key missing"); continue; }
+            const omdbType = kind === "movie" ? "movie" : kind === "series" ? "series" : undefined;
+            const response = await new OMDbProvider(key).search(query, 1, omdbType);
+            for (const item of response.Search ?? []) {
+              const year = Number(item.Year.match(/\d{4}/)?.[0] ?? 0);
+              items.push({
+                source: "omdb",
+                id: item.imdbID,
+                title: item.Title,
+                year,
+                type: item.Type === "series" ? "TV series" : "Movie",
+                posterUrl: item.Poster !== "N/A" ? item.Poster : "",
+                omdbItem: item,
+              });
+            }
+          }
+        } catch (error) {
+          failures.push(`${providerId === "kinopoisk" ? "Kinopoisk" : "OMDb"}: ${getErrorMessage(error)}`);
+        }
+      }
 
       this.resultsEl.empty();
       if (items.length === 0) {
         this.resultsEl.createEl("p", {
-          text: hiddenCount > 0
-            ? `No matching titles found. SFW filter hid ${hiddenCount} explicit adult result(s).`
-            : "No matching titles found.",
+          text: failures.length ? `No results. ${failures.join(" · ")}` : "No matching titles found.",
+          cls: failures.length ? "biblioteka-error" : "biblioteka-muted",
         });
         return;
       }
 
       this.resultsEl.createEl("p", {
-        text: `Found ${items.length} result(s).`,
-        cls: "biblioteka-muted",
+        text: `Found ${items.length} result(s).${failures.length ? " Some providers could not be searched: " + failures.join(" · ") : ""}`,
+        cls: failures.length ? "biblioteka-error" : "biblioteka-muted",
       });
       for (const item of items) this.renderResult(item);
     } catch (error) {
@@ -430,14 +558,14 @@ class MediaSearchModal extends Modal {
     }
   }
 
-  private renderResult(item: KinopoiskSearchItem): void {
+  private renderResult(item: UnifiedSearchResult): void {
     const row = this.resultsEl.createDiv({ cls: "biblioteka-result" });
-    const posterUrl = item.posterUrlPreview || item.posterUrl;
+    const posterUrl = item.posterUrl;
     if (posterUrl) {
       row.createEl("img", {
         attr: {
           src: posterUrl,
-          alt: item.nameRu || item.nameEn || "Poster",
+          alt: item.title || "Poster",
           loading: "lazy",
         },
         cls: "biblioteka-result-poster",
@@ -446,13 +574,13 @@ class MediaSearchModal extends Modal {
 
     const info = row.createDiv({ cls: "biblioteka-result-info" });
     info.createEl("strong", {
-      text: item.nameRu || item.nameEn || item.nameOriginal || "Untitled",
+      text: item.title,
     });
     const details = [
       item.year ? String(item.year) : "",
-      formatMediaType(item.type),
+      item.type,
       item.rating ? `★ ${item.rating}` : "",
-      item.filmLength ? `${item.filmLength} min` : "",
+      item.source === "kinopoisk" ? "Kinopoisk" : "OMDb",
     ].filter(Boolean);
     info.createEl("div", {
       text: details.join(" · ") || "Details unavailable",
@@ -467,25 +595,67 @@ class MediaSearchModal extends Modal {
   }
 
   private async openPreview(
-    item: KinopoiskSearchItem,
+    item: UnifiedSearchResult,
     selectButton: HTMLButtonElement,
   ): Promise<void> {
     selectButton.disabled = true;
     selectButton.setText("Loading…");
 
     try {
-      const provider = new KinopoiskProvider(this.plugin.settings.kinopoiskApiKey);
-      const details = await provider.getDetails(item.filmId);
+      let details: KinopoiskDetails;
       let omdbDetails: OMDbDetails | undefined;
+      const kpEnabled = this.plugin.settings.enabledProviders.kinopoisk && Boolean(this.plugin.settings.kinopoiskApiKey.trim());
+      const omdbEnabled = this.plugin.settings.enabledProviders.omdb && Boolean(this.plugin.settings.omdbApiKey.trim());
 
-      const omdbKey = this.plugin.settings.omdbApiKey.trim();
-      if (omdbKey && details.imdbId) {
-        try {
-          omdbDetails = await new OMDbProvider(omdbKey).getDetails(details.imdbId);
-        } catch (error) {
-          console.warn("Biblioteka: OMDb enrichment failed; continuing with Kinopoisk data.", error);
-          new Notice("OMDb could not be reached. Continuing with Kinopoisk data.");
+      if (item.source === "kinopoisk" && item.kinopoiskItem) {
+        details = await new KinopoiskProvider(this.plugin.settings.kinopoiskApiKey).getDetails(item.kinopoiskItem.filmId);
+        if (omdbEnabled) {
+          try {
+            const omdb = new OMDbProvider(this.plugin.settings.omdbApiKey);
+            if (details.imdbId) {
+              omdbDetails = await omdb.getDetails(details.imdbId);
+            } else {
+              const found = await omdb.search(item.title, 1, details.type?.includes("TV") ? "series" : "movie");
+              const match = findMatchingOMDb(found.Search ?? [], item.title, item.year, item.type);
+              if (match) omdbDetails = await omdb.getDetails(match.imdbID);
+            }
+          } catch (error) {
+            console.warn("Biblioteka: OMDb enrichment failed.", error);
+            new Notice("OMDb could not be reached. Continuing with Kinopoisk data.");
+          }
         }
+      } else if (item.source === "omdb" && item.omdbItem) {
+        omdbDetails = await new OMDbProvider(this.plugin.settings.omdbApiKey).getDetails(item.omdbItem.imdbID);
+        let kpDetails: KinopoiskDetails | undefined;
+        if (kpEnabled) {
+          try {
+            const found = await new KinopoiskProvider(this.plugin.settings.kinopoiskApiKey).search(item.title);
+            const matches = (found.films ?? []).filter((candidate) =>
+              normalizeDuplicateTitle(candidate.nameRu || candidate.nameEn || candidate.nameOriginal || "") === normalizeDuplicateTitle(item.title)
+              && (!item.year || !candidate.year || candidate.year === item.year)
+              && matchesKind(candidate, item.type === "TV series" ? "series" : "movie"),
+            );
+            if (matches.length === 1) kpDetails = await new KinopoiskProvider(this.plugin.settings.kinopoiskApiKey).getDetails(matches[0].filmId);
+            else if (matches.length > 1) new Notice("Multiple Kinopoisk matches found; OMDb data will be used without merging an ambiguous match.");
+          } catch (error) {
+            console.warn("Biblioteka: Kinopoisk enrichment failed.", error);
+            new Notice("Kinopoisk could not be reached. Continuing with OMDb data.");
+          }
+        }
+        details = kpDetails ?? {
+          kinopoiskId: 0,
+          imdbId: omdbDetails.imdbID,
+          nameRu: omdbDetails.Title,
+          nameOriginal: omdbDetails.Title,
+          posterUrl: omdbDetails.Poster !== "N/A" ? omdbDetails.Poster : undefined,
+          year: Number(omdbDetails.Year.match(/\d{4}/)?.[0] ?? 0) || undefined,
+          filmLength: Number(omdbDetails.Runtime?.match(/\d+/)?.[0] ?? 0) || undefined,
+          description: omdbDetails.Plot !== "N/A" ? omdbDetails.Plot : undefined,
+          type: omdbDetails.Type === "series" ? "TV_SERIES" : "FILM",
+          ratingImdb: parseRatingNumber(omdbDetails.imdbRating),
+        };
+      } else {
+        throw new Error("The selected provider result is no longer available.");
       }
 
       this.showPreview(details, omdbDetails);
@@ -597,7 +767,7 @@ class MediaSearchModal extends Modal {
     button.setText(skipDuplicateCheck ? "Creating…" : "Checking duplicates…");
     try {
       if (!skipDuplicateCheck) {
-        const candidateId = Number(read("kinopoiskId")) || details.kinopoiskId;
+        const candidateId = Number(read("kinopoiskId")) || details.kinopoiskId || 0;
         const candidateYear = Number(read("year")) || details.year || 0;
         const candidateType = formatMediaType(details.type);
         const duplicates = await findDuplicateNotes(this.app, candidateId, title, candidateYear, candidateType);
@@ -641,7 +811,8 @@ class MediaSearchModal extends Modal {
           const extension = getImageExtension(posterUrl);
           const posterFolder = `${folder}/_posters`;
           await ensureVaultFolder(this.app, posterFolder);
-          const posterName = `kinopoisk-${details.kinopoiskId}.${extension}`;
+          const posterIdentity = details.kinopoiskId > 0 ? `kinopoisk-${details.kinopoiskId}` : `imdb-${read("imdbId") || "unknown"}`;
+          const posterName = `${posterIdentity}.${extension}`;
           const posterPath = `${posterFolder}/${posterName}`;
           if (!this.app.vault.getAbstractFileByPath(posterPath)) {
             const response = await requestUrl({ url: posterUrl, method: "GET" });
@@ -657,8 +828,9 @@ class MediaSearchModal extends Modal {
       const ratings = buildRatings(details, omdbDetails);
       const properties: Record<string, string | number | string[] | Array<{ source: string; value: number; votes?: number; url?: string }>> = {
         type: formatMediaType(details.type),
-        kinopoisk_id: Number(read("kinopoiskId")) || details.kinopoiskId,
       };
+      const kinopoiskId = Number(read("kinopoiskId")) || details.kinopoiskId;
+      if (kinopoiskId > 0) properties.kinopoisk_id = kinopoiskId;
       const originalTitle = read("originalTitle");
       const year = Number(read("year"));
       const genres = splitList(read("genres"));
@@ -712,7 +884,7 @@ class MediaSearchModal extends Modal {
         title,
         yearText,
       );
-      const baseName = sanitizeFileName(fileName) || `media-${details.kinopoiskId}`;
+      const baseName = sanitizeFileName(fileName) || `media-${details.kinopoiskId || read("imdbId") || "untitled"}`;
       let notePath = `${folder}/${baseName}.md`;
       let suffix = 2;
       while (this.app.vault.getAbstractFileByPath(notePath)) {
@@ -737,6 +909,28 @@ class MediaSearchModal extends Modal {
 
 
 
+
+function getEnabledProviderIds(settings: BibliotekaSettings): Array<"kinopoisk" | "omdb"> {
+  return settings.providerOrder.filter((id) =>
+    settings.enabledProviders[id] &&
+    Boolean(settings[id === "kinopoisk" ? "kinopoiskApiKey" : "omdbApiKey"].trim()),
+  );
+}
+
+function findMatchingOMDb(
+  items: OMDbSearchItem[],
+  title: string,
+  year: number,
+  mediaType: string,
+): OMDbSearchItem | undefined {
+  const titleKey = normalizeDuplicateTitle(title);
+  const matches = items.filter((item) =>
+    normalizeDuplicateTitle(item.Title) === titleKey &&
+    (!year || !Number(item.Year.match(/\d{4}/)?.[0] ?? 0) || Number(item.Year.match(/\d{4}/)?.[0]) === year) &&
+    (mediaType === "TV series" ? item.Type === "series" : item.Type === "movie"),
+  );
+  return matches.length === 1 ? matches[0] : undefined;
+}
 
 interface MediaRating {
   source: string;
@@ -905,8 +1099,9 @@ async function updateExistingNote(
   const ratings = buildRatings(details, omdbDetails);
   const candidateProperties: Record<string, unknown> = {
     type: formatMediaType(details.type),
-    kinopoisk_id: Number(read("kinopoiskId")) || details.kinopoiskId,
   };
+  const kinopoiskId = Number(read("kinopoiskId")) || details.kinopoiskId;
+  if (kinopoiskId > 0) candidateProperties.kinopoisk_id = kinopoiskId;
 
   const originalTitle = read("originalTitle");
   const year = Number(read("year"));
@@ -1001,7 +1196,7 @@ async function findDuplicateNotes(
     if (!frontmatter) continue;
 
     const existingId = String(frontmatter.kinopoisk_id ?? "").trim();
-    if (existingId && existingId === String(kinopoiskId)) {
+    if (kinopoiskId > 0 && existingId && existingId === String(kinopoiskId)) {
       matches.push({ file, reason: `Same Kinopoisk ID: ${kinopoiskId}` });
       continue;
     }
