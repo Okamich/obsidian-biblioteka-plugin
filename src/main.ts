@@ -705,20 +705,34 @@ class MediaSearchModal extends Modal {
     const sourceLabel = (label: string, fromOmdb: boolean): string =>
       fromOmdb ? `${label} · OMDb` : `${label} · Kinopoisk`;
 
-    const title = details.nameRu || details.nameEn || details.nameOriginal || omdbDetails?.Title || "";
-    const originalTitle = details.nameOriginal || details.nameEn || omdbDetails?.Title || "";
-    const year = details.year ? String(details.year) : omdbYear;
-    const description = details.description || details.shortDescription || omdbDetails?.Plot || "";
-    const genres = kpGenres.length ? kpGenres : omdbGenres;
-    const countries = kpCountries.length ? kpCountries : omdbCountries;
+    const omdbFirst = this.plugin.settings.providerOrder[0] === "omdb";
+    const kpTitle = details.nameRu || details.nameEn || details.nameOriginal || "";
+    const title = omdbFirst
+      ? (omdbDetails?.Title && omdbDetails.Title !== "N/A" ? omdbDetails.Title : kpTitle)
+      : (kpTitle || omdbDetails?.Title || "");
+    const originalTitle = omdbFirst
+      ? (omdbDetails?.Title && omdbDetails.Title !== "N/A" ? omdbDetails.Title : details.nameOriginal || details.nameEn || "")
+      : (details.nameOriginal || details.nameEn || omdbDetails?.Title || "");
+    const year = omdbFirst
+      ? (omdbYear || (details.year ? String(details.year) : ""))
+      : (details.year ? String(details.year) : omdbYear);
+    const description = omdbFirst
+      ? (omdbDetails?.Plot && omdbDetails.Plot !== "N/A" ? omdbDetails.Plot : details.description || details.shortDescription || "")
+      : (details.description || details.shortDescription || omdbDetails?.Plot || "");
+    const genres = omdbFirst
+      ? (omdbGenres.length ? omdbGenres : kpGenres)
+      : (kpGenres.length ? kpGenres : omdbGenres);
+    const countries = omdbFirst
+      ? (omdbCountries.length ? omdbCountries : kpCountries)
+      : (kpCountries.length ? kpCountries : omdbCountries);
     const imdbRating = details.ratingImdb ?? parseRatingNumber(omdbDetails?.imdbRating);
 
     addField("title", "Title", title);
-    addField("originalTitle", sourceLabel("Original title", !details.nameOriginal && !details.nameEn && Boolean(omdbDetails?.Title)), originalTitle);
-    addField("year", sourceLabel("Year", !details.year && Boolean(omdbYear)), year);
-    addField("description", sourceLabel("Description", !details.description && !details.shortDescription && Boolean(omdbDetails?.Plot)), description, true);
-    addField("genres", sourceLabel("Genres (comma-separated)", kpGenres.length === 0 && omdbGenres.length > 0), genres.join(", "));
-    addField("countries", sourceLabel("Countries (comma-separated)", kpCountries.length === 0 && omdbCountries.length > 0), countries.join(", "));
+    addField("originalTitle", sourceLabel("Original title", omdbFirst ? Boolean(omdbDetails?.Title) : !details.nameOriginal && !details.nameEn && Boolean(omdbDetails?.Title)), originalTitle);
+    addField("year", sourceLabel("Year", omdbFirst ? Boolean(omdbYear) : !details.year && Boolean(omdbYear)), year);
+    addField("description", sourceLabel("Description", omdbFirst ? Boolean(omdbDetails?.Plot && omdbDetails.Plot !== "N/A") : !details.description && !details.shortDescription && Boolean(omdbDetails?.Plot)), description, true);
+    addField("genres", sourceLabel("Genres (comma-separated)", omdbFirst ? omdbGenres.length > 0 : kpGenres.length === 0 && omdbGenres.length > 0), genres.join(", "));
+    addField("countries", sourceLabel("Countries (comma-separated)", omdbFirst ? omdbCountries.length > 0 : kpCountries.length === 0 && omdbCountries.length > 0), countries.join(", "));
     addField("ratingKinopoisk", "Kinopoisk rating", details.ratingKinopoisk == null ? "" : String(details.ratingKinopoisk));
     addField("ratingImdb", sourceLabel("IMDb rating", details.ratingImdb == null && imdbRating != null), imdbRating == null ? "" : String(imdbRating));
     addField("director", "Director · OMDb", omdbDetails?.Director && omdbDetails.Director !== "N/A" ? omdbDetails.Director : "");
