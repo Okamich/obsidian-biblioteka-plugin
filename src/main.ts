@@ -1497,7 +1497,7 @@ function yamlValue(value: unknown): string {
 function getImageExtension(url: string): string {
   try {
     const pathname = new URL(url).pathname.toLowerCase();
-    const match = pathname.match(/\\.(jpe?g|png|webp|gif)$/);
+    const match = pathname.match(/\.(jpe?g|png|webp|gif)$/);
     if (match) return match[1] === "jpeg" ? "jpg" : match[1];
   } catch {
     // Fall back to a broadly supported image format.
