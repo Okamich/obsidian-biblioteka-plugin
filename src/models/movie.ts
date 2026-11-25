@@ -44,7 +44,7 @@ export interface MovieRecord {
   poster: string;
   posterCandidates: PosterCandidate[];
   ratings: MovieRating[];
-  sourceIds: Partial<Record<MovieProviderId, string>>;
+  sourceIds: Partial<Record<MovieProviderId, string>>;\n  externalIds: { imdb?: string };
   fieldSources: Partial<Record<MovieField | "poster", MovieProviderId>>;
   watched: "" | "Просмотрен" | "Собираюсь посмотреть";
   lastWatched: string;
@@ -70,7 +70,7 @@ export function createEmptyMovieRecord(type: MovieRecord["type"] = "Фильм")
     poster: "",
     posterCandidates: [],
     ratings: [],
-    sourceIds: {},
+    sourceIds: {},\n    externalIds: {},
     fieldSources: {},
     watched: "",
     lastWatched: "",
