@@ -3,7 +3,7 @@
 **Product:** Biblioteka  
 **Tagline:** Media Library for Obsidian  
 **Plugin ID:** `obsidian-biblioteka-plugin`  
-**Version:** 0.9  
+**Version:** 1.0  
 **Status:** Draft — MVP
 
 ## 1. Product
@@ -18,8 +18,9 @@ The MVP focuses on **cinema**: movies and TV series.
 
 1. **Kinopoisk Unofficial API** — primary provider and default search priority.
 2. **OMDb API** — secondary provider and additional metadata/ratings source.
+3. **TMDB API** — additional metadata, credits, posters and ratings source.
 
-Provider priority is configurable. The architecture must allow additional providers without rewriting the core.
+Default provider order: Kinopoisk → OMDb → TMDB. Provider priority is configurable by drag-and-drop. The architecture must allow additional providers without rewriting the core.
 
 ## 3. Confirmed product decisions
 
@@ -52,14 +53,14 @@ Provider priority is configurable. The architecture must allow additional provid
 3. Search enabled providers according to priority.
 4. User selects a result.
 5. Retrieve full details from the selected provider.
-6. Search other providers for matching records.
-7. Match by external IDs where possible; otherwise use title, year and media type.
+6. Resolve the same object through enabled providers in configured priority order.
+7. Match by external IDs where possible; otherwise use exact normalized title, year and media type.
 8. Do not merge ambiguous matches automatically.
-9. Resolve ordinary fields using provider priority, filling only missing values.
-10. Collect ratings independently from all enabled providers.
-11. Select a poster using Poster Manager.
+9. Normalize each provider response into the shared Movie model.
+10. Fill only fields that are still empty; never replace a value supplied by an earlier provider.
+11. Collect ratings and poster candidates independently from all successfully matched providers.
 12. Check for possible duplicates.
-13. Show an editable preview with field provenance.
+13. Show an editable preview with field provenance and poster choice.
 14. Create a Markdown note after user confirmation.
 
 Failure of one provider must not discard data already collected from another provider.
@@ -97,7 +98,8 @@ All network requests should use Obsidian's `requestUrl()` API. API keys must nev
 
 ## 7. Field resolution and provenance
 
-- First valid value according to configured provider priority wins.
+- First valid value according to configured provider priority wins, field by field.
+- A later provider may only fill a field that is still empty.
 - Existing Vault values are not overwritten automatically.
 - Empty values are ignored.
 - `0` and `false` are valid.
@@ -118,15 +120,13 @@ The final YAML schema for ratings will be settled during implementation.
 
 ## 9. Poster Manager
 
-Selection modes:
+Current MVP behavior:
 
-- `priority` — first available poster according to provider priority.
-- `best_quality` — highest-quality verifiable candidate.
-- `ask` — ask before replacing an existing poster.
+- Collect poster candidates from all successfully matched providers.
+- Default to the first available poster according to provider priority.
+- Allow the user to choose another available poster in Preview; show dimensions/language when the provider supplies them.
 
-Default: `best_quality`.
-
-Compare actual image dimensions when possible, aspect ratio, availability and format. Do not download every candidate into the Vault. If quality cannot be verified, do not claim that it is known.
+Automatic cross-provider quality ranking is deferred until image dimensions can be compared reliably for all relevant candidates. Do not download every candidate into the Vault or claim quality is known when it cannot be verified.
 
 Additional rules:
 
@@ -221,3 +221,52 @@ The MVP must allow the user to:
 4. How should unknown or incomplete metadata be handled without hiding ordinary cinema unnecessarily?
 
 **Acceptance direction:** The toggle remains simple. The implementation should be conservative: target explicit adult productions, preserve ordinary 18+ cinema, and clearly document that metadata-based filtering cannot guarantee complete detection.
+
+
+## 17. Shared movie data model (v1.0)
+
+All movie providers must normalize their responses into one shared `MovieRecord`. Provider-specific response shapes must not leak into the UI or note writer.
+
+### Metadata fields
+
+| Property | Meaning |
+|---|---|
+| `type` | Programmatically assigned media type: `Фильм` for movies |
+| `sources` | Human-readable list of providers that supplied data |
+| `source_ids` | Mapping of provider name to that provider's own ID (for example, `kinopoisk: "301"`) |
+| `title` | Localized/display title |
+| `originalTitle` | Original title |
+| `year` | Release year |
+| `genres` | String array |
+| `countries` | Production country string array |
+| `poster` | Selected local poster path |
+| `plot` | Synopsis |
+| `director` | Director string array |
+| `writer` | Writer string array |
+| `duration` | Runtime in minutes |
+| `studio` | Production studio/company string array |
+| `actors` | Main cast string array |
+| `ratings` | Collection of source, value, scale, vote count (when available), and URL |
+| `watched` | `Просмотрен`, `Собираюсь посмотреть`, or empty |
+| `lastWatched` | User-entered date |
+| `personalRating` | User-entered numeric rating |
+| `personalReview` | User-authored review/comment |
+| `tags` | Includes the service tag `Biblioteka` |
+
+### Resolution rules
+
+1. Query providers sequentially in the configured order.
+2. For every ordinary metadata field, the first non-empty value wins.
+3. A later provider fills only missing fields; it never replaces populated fields.
+4. Ratings are collected from all matched providers. Preserve each source's scale (for example, 10-point, 100-point or percentage). When the same rating source appears twice, keep the first value and supplement missing scale, vote count or URL from later responses.
+5. Collect poster candidates from matched providers. The first available poster is the default, but the user can choose another candidate in Preview.
+6. Store source IDs as explicit provider-to-ID pairs. An IMDb external ID discovered through TMDB is not treated as proof that OMDb has already supplied a record.
+7. Personal fields (`watched`, `lastWatched`, `personalRating`, `personalReview`) are user-owned and must never be overwritten by provider refreshes.
+8. `tags` includes `Biblioteka`; existing user tags must be preserved when enriching an existing note.
+
+### Provider limitations
+
+- OMDb's `Title` is not guaranteed to be an original title; do not copy it into `originalTitle`.
+- TMDB movie search/details are implemented for movies. TMDB series support is separate work.
+- Kinopoisk staff/credits are supplemental requests; failure to load staff must not discard the core movie metadata.
+- Cross-provider matching must prefer external IDs. Title/year fallback is allowed only for a unique, unambiguous match.
