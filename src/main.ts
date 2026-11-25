@@ -6,6 +6,7 @@ import {
   Plugin,
   PluginSettingTab,
   Setting,
+  SettingGroup,
   TFile,
   TFolder,
   requestUrl,
@@ -237,8 +238,8 @@ class BibliotekaSettingTab extends PluginSettingTab {
       cls: "biblioteka-status",
     });
 
-    const generalSection = containerEl.createDiv({ cls: "biblioteka-settings-group" });
-    generalSection.createEl("h3", { text: "General" });
+    const generalGroup = new SettingGroup(containerEl);
+    const generalSection = generalGroup.listEl;
     new Setting(generalSection)
       .setName("Library folder")
       .setDesc("Root folder for the media library. Default: Media.")
@@ -268,15 +269,18 @@ class BibliotekaSettingTab extends PluginSettingTab {
     const apiSection = containerEl.createEl("details", { cls: "biblioteka-settings-disclosure" });
     apiSection.createEl("summary", { text: "API" });
     const apiContent = apiSection.createDiv({ cls: "biblioteka-settings-section-content" });
+    const apiGroup = new SettingGroup(apiContent);
+    const apiProviders = apiGroup.listEl;
     apiContent.createEl("p", {
       text: "Manage API keys and test connections. Keys are stored in plugin settings, not in media notes.",
       cls: "biblioteka-muted",
     });
 
-    const kinopoiskSection = apiContent.createEl("details", { cls: "biblioteka-provider-disclosure" });
+    const kinopoiskSection = apiProviders.createEl("details", { cls: "biblioteka-provider-disclosure" });
     kinopoiskSection.createEl("summary", { text: "Kinopoisk" });
     const kinopoiskContent = kinopoiskSection.createDiv({ cls: "biblioteka-settings-section-content" });
-    new Setting(kinopoiskContent)
+    const kinopoiskGroup = new SettingGroup(kinopoiskContent);
+    new Setting(kinopoiskGroup.listEl)
       .setName("Kinopoisk API key")
       .setDesc("Primary source for Russian-language movie and TV search.")
       .addText((text) => {
@@ -315,10 +319,11 @@ class BibliotekaSettingTab extends PluginSettingTab {
         }),
       );
 
-    const omdbSection = apiContent.createEl("details", { cls: "biblioteka-provider-disclosure" });
+    const omdbSection = apiProviders.createEl("details", { cls: "biblioteka-provider-disclosure" });
     omdbSection.createEl("summary", { text: "OMDb" });
     const omdbContent = omdbSection.createDiv({ cls: "biblioteka-settings-section-content" });
-    new Setting(omdbContent)
+    const omdbGroup = new SettingGroup(omdbContent);
+    new Setting(omdbGroup.listEl)
       .setName("OMDb API key")
       .setDesc("Additional metadata and ratings source.")
       .addText((text) => {
@@ -357,10 +362,11 @@ class BibliotekaSettingTab extends PluginSettingTab {
         }),
       );
 
-    const tmdbSection = apiContent.createEl("details", { cls: "biblioteka-provider-disclosure" });
+    const tmdbSection = apiProviders.createEl("details", { cls: "biblioteka-provider-disclosure" });
     tmdbSection.createEl("summary", { text: "TMDB" });
     const tmdbContent = tmdbSection.createDiv({ cls: "biblioteka-settings-section-content" });
-    new Setting(tmdbContent)
+    const tmdbGroup = new SettingGroup(tmdbContent);
+    new Setting(tmdbGroup.listEl)
       .setName("TMDB API key")
       .setDesc("Additional movie metadata, credits, images and ratings source.")
       .addText((text) => {
@@ -398,8 +404,9 @@ class BibliotekaSettingTab extends PluginSettingTab {
         }),
       );
 
-    const moviesSection = containerEl.createDiv({ cls: "biblioteka-settings-group" });
-    moviesSection.createEl("h3", { text: "Movies" });
+    const moviesGroup = new SettingGroup(containerEl);
+    moviesGroup.setHeading("Movies");
+    const moviesSection = moviesGroup.listEl;
     moviesSection.createEl("p", {
       text: "Settings for movies and TV series.",
       cls: "biblioteka-muted",
