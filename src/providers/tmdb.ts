@@ -57,7 +57,7 @@ export class TMDBProvider {
 
   async findByExternalId(externalId: string): Promise<{ movie_results?: TMDBSearchItem[] }> {
     const id = externalId.trim();
-    if (!/^tt\\d+$/.test(id)) throw new Error("A valid IMDb ID is required for TMDB lookup.");
+    if (!/^tt\d+$/.test(id)) throw new Error("A valid IMDb ID is required for TMDB lookup.");
     return this.request(`/find/${encodeURIComponent(id)}`, { external_source: "imdb_id" });
   }
 
