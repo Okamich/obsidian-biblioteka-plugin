@@ -281,6 +281,44 @@ class BibliotekaSettingTab extends PluginSettingTab {
         }),
       );
 
+    new Setting(containerEl)
+      .setName("TMDB API key")
+      .setDesc("Additional movie metadata, credits, images and ratings source.")
+      .addText((text) => {
+        text.inputEl.type = "password";
+        text.setPlaceholder("Enter TMDB API key")
+          .setValue(this.plugin.settings.tmdbApiKey)
+          .onChange(async (value) => {
+            this.plugin.settings.tmdbApiKey = value.trim();
+            await this.plugin.saveSettings();
+          });
+      })
+      .addButton((button) =>
+        button.setButtonText("Get API key").onClick(() => {
+          window.open("https://www.themoviedb.org/settings/api", "_blank");
+        }),
+      )
+      .addButton((button) =>
+        button.setButtonText("Test connection").onClick(async () => {
+          const key = this.plugin.settings.tmdbApiKey.trim();
+          if (!key) {
+            new Notice("Enter your TMDB API key first.");
+            return;
+          }
+          button.setButtonText("Testing…");
+          button.setDisabled(true);
+          try {
+            await new TMDBProvider(key).testConnection();
+            new Notice("TMDB API connection successful.");
+          } catch (error) {
+            new Notice(`TMDB connection failed: ${getErrorMessage(error)}`);
+          } finally {
+            button.setButtonText("Test connection");
+            button.setDisabled(false);
+          }
+        }),
+      );
+
     containerEl.createEl("h3", { text: "Movies" });
     containerEl.createEl("p", {
       text: "Choose search sources and drag them to set the order used for search and metadata priority.",
@@ -291,7 +329,7 @@ class BibliotekaSettingTab extends PluginSettingTab {
     const renderProviderRows = (): void => {
       providerRows.empty();
       for (const providerId of this.plugin.settings.providerOrder) {
-        const label = providerId === "kinopoisk" ? "Kinopoisk" : "OMDb";
+        const label = providerId === "kinopoisk" ? "Kinopoisk" : providerId === "omdb" ? "OMDb" : "TMDB";
         const enabled = this.plugin.settings.enabledProviders[providerId];
         const row = providerRows.createDiv({ cls: "biblioteka-provider-row" });
         row.draggable = true;
@@ -323,7 +361,7 @@ class BibliotekaSettingTab extends PluginSettingTab {
         row.addEventListener("dragover", (event) => event.preventDefault());
         row.addEventListener("drop", (event) => {
           event.preventDefault();
-          const dragged = event.dataTransfer?.getData("text/plain") as "kinopoisk" | "omdb";
+          const dragged = event.dataTransfer?.getData("text/plain") as MovieProviderId;
           if (!dragged || dragged === providerId) return;
           const order = [...this.plugin.settings.providerOrder];
           const from = order.indexOf(dragged);
@@ -336,7 +374,7 @@ class BibliotekaSettingTab extends PluginSettingTab {
         });
       }
     };
-    const moveProvider = async (providerId: "kinopoisk" | "omdb", direction: -1 | 1): Promise<void> => {
+    const moveProvider = async (providerId: MovieProviderId, direction: -1 | 1): Promise<void> => {
       const order = [...this.plugin.settings.providerOrder];
       const from = order.indexOf(providerId);
       const to = from + direction;
