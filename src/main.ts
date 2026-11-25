@@ -74,54 +74,71 @@ export default class BibliotekaPlugin extends Plugin {
   }
 
   private async refreshRatings(): Promise<void> {
-    if (!this.settings.kinopoiskApiKey.trim()) {
-      new Notice("Add your Kinopoisk API key in Biblioteka settings first.");
+    const providerOrder = this.settings.providerOrder.filter((id) =>
+      this.settings.enabledProviders[id] && Boolean(getProviderApiKey(this.settings, id)),
+    );
+    if (providerOrder.length === 0) {
+      new Notice("Enable at least one provider and add its API key in Biblioteka settings.");
       return;
     }
 
     const files = this.app.vault.getMarkdownFiles();
     const targets = files.filter((file) => {
-      const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
-      return Number(frontmatter?.kinopoisk_id) > 0;
+      const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+      return Boolean(fm?.source_ids || fm?.kinopoisk_id || fm?.imdb_id);
     });
-
     if (targets.length === 0) {
-      new Notice("No Biblioteka notes with a Kinopoisk ID were found.");
+      new Notice("No Biblioteka notes with provider IDs were found.");
       return;
     }
 
-    const provider = new KinopoiskProvider(this.settings.kinopoiskApiKey);
     let updated = 0;
     let failed = 0;
-
     new Notice(`Refreshing ratings for ${targets.length} note(s)…`);
     for (const file of targets) {
       try {
-        const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
-        const id = Number(frontmatter?.kinopoisk_id);
-        if (!Number.isInteger(id) || id <= 0) continue;
+        const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+        if (!fm) continue;
+        const ids = (fm.source_ids && typeof fm.source_ids === "object")
+          ? { ...(fm.source_ids as Partial<Record<MovieProviderId, string>>) }
+          : {};
+        if (!ids.kinopoisk && fm.kinopoisk_id) ids.kinopoisk = String(fm.kinopoisk_id);
+        if (!ids.omdb && fm.imdb_id) ids.omdb = String(fm.imdb_id);
+        const source = providerOrder.find((id) => Boolean(ids[id]));
+        if (!source) continue;
+        const title = String(fm.title ?? file.basename);
+        const year = Number(fm.year) || 0;
+        const mediaType = normalizeMediaType(String(fm.type ?? "")) === "series" ? "series" as const : "movie" as const;
+        const record = await resolveMovieRecord(
+          { source, id: String(ids[source]), title, year, mediaType },
+          providerOrder,
+          {
+            kinopoisk: this.settings.kinopoiskApiKey,
+            omdb: this.settings.omdbApiKey,
+            tmdb: this.settings.tmdbApiKey,
+          },
+          (provider, error) => console.warn(`Biblioteka: ${provider} ratings refresh failed for ${file.path}`, error),
+        );
+        if (record.ratings.length === 0) continue;
 
-        const details = await provider.getDetails(id);
-        const ratings = buildRatings(details);
-        if (ratings.length === 0) continue;
-
-        await this.app.fileManager.processFrontMatter(file, (fm) => {
-          fm.ratings = ratings;
+        await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+          frontmatter.ratings = record.ratings;
+          const existingIds = (frontmatter.source_ids && typeof frontmatter.source_ids === "object")
+            ? frontmatter.source_ids as Record<string, string>
+            : {};
+          frontmatter.source_ids = { ...record.sourceIds, ...existingIds };
+          frontmatter.sources = [...new Set([...Object.keys(existingIds), ...Object.keys(record.sourceIds)])];
         });
 
         const current = await this.app.vault.read(file);
-        const table = renderRatingsTable(ratings);
         const start = "<!-- biblioteka:ratings:start -->";
         const end = "<!-- biblioteka:ratings:end -->";
-        const block = [start, "## Ratings", "", table, end].join("\n");
+        const block = [start, "## Ratings", "", renderRatingsTable(record.ratings), end].join("\n");
         const startIndex = current.indexOf(start);
         const endIndex = current.indexOf(end);
-        let next: string;
-        if (startIndex >= 0 && endIndex > startIndex) {
-          next = current.slice(0, startIndex) + block + current.slice(endIndex + end.length);
-        } else {
-          next = `${current.trimEnd()}\n\n${block}\n`;
-        }
+        const next = startIndex >= 0 && endIndex > startIndex
+          ? current.slice(0, startIndex) + block + current.slice(endIndex + end.length)
+          : `${current.trimEnd()}\n\n${block}\n`;
         await this.app.vault.modify(file, next);
         updated++;
       } catch (error) {
@@ -129,7 +146,6 @@ export default class BibliotekaPlugin extends Plugin {
         console.warn(`Biblioteka: could not refresh ratings for ${file.path}`, error);
       }
     }
-
     new Notice(`Ratings refreshed: ${updated}. Failed: ${failed}.`);
   }
 
