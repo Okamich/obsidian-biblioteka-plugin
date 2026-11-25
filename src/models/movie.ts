@@ -124,10 +124,14 @@ export function mergeMovieRecord(
   }
 
   for (const rating of incoming.ratings ?? []) {
-    const exists = target.ratings.some((item) =>
+    const existing = target.ratings.find((item) =>
       item.source.toLocaleLowerCase() === rating.source.toLocaleLowerCase(),
     );
-    if (!exists) target.ratings.push(rating);
+    if (!existing) target.ratings.push(rating);
+    else {
+      if (existing.votes == null && rating.votes != null) existing.votes = rating.votes;
+      if (!existing.url && rating.url) existing.url = rating.url;
+    }
   }
 
   if (incoming.sourceIds?.[provider]) target.sourceIds[provider] = incoming.sourceIds[provider];
