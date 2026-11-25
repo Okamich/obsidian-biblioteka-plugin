@@ -400,12 +400,7 @@ class BibliotekaSettingTab extends PluginSettingTab {
 
     const moviesSection = containerEl.createDiv({ cls: "biblioteka-settings-section" });
     moviesSection.createEl("h3", { text: "Movies" });
-    containerEl.createEl("p", {
-      text: "Choose search sources and drag them to set the order used for search and metadata priority.",
-      cls: "biblioteka-muted",
-    });
-
-    containerEl.createEl("p", {
+    moviesSection.createEl("p", {
       text: "Settings for movies and TV series.",
       cls: "biblioteka-muted",
     });
@@ -444,7 +439,7 @@ class BibliotekaSettingTab extends PluginSettingTab {
       text: "Choose search sources and drag them to set the order used for search and metadata priority.",
       cls: "biblioteka-muted",
     });
-    const providerRows = containerEl.createDiv({ cls: "biblioteka-provider-list" });
+    const providerRows = moviesSection.createDiv({ cls: "biblioteka-provider-list" });
     const renderProviderRows = (): void => {
       providerRows.empty();
       for (const providerId of this.plugin.settings.providerOrder) {
