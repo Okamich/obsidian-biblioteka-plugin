@@ -61,10 +61,12 @@ export class TMDBProvider {
     return this.request(`/find/${encodeURIComponent(id)}`, { external_source: "imdb_id" });
   }
 
-  async getDetails(id: number): Promise<TMDBMovieDetails> {
+  async getDetails(id: number, includeCredits = true): Promise<TMDBMovieDetails> {
     if (!Number.isInteger(id) || id <= 0) throw new Error("Invalid TMDB movie ID.");
+    const append = ["external_ids", "images"];
+    if (includeCredits) append.unshift("credits");
     return this.request(`/movie/${id}`, {
-      append_to_response: "credits,external_ids,images",
+      append_to_response: append.join(","),
       include_image_language: "ru,en,null",
     });
   }
