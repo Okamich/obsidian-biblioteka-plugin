@@ -118,7 +118,7 @@ export function normalizeTMDB(details: TMDBMovieDetails, provider: TMDBProvider)
     `https://www.themoviedb.org/movie/${details.id}`));
   if (details.external_ids?.imdb_id) record.externalIds.imdb = details.external_ids.imdb_id;
   record.sourceIds.tmdb = String(details.id);
-  for (const poster of details.images?.posters ?? []) {
+  for (const poster of [...(details.images?.posters ?? [])].sort((a, b) => b.width * b.height - a.width * a.height).slice(0, 20)) {
     const url = provider.posterUrl(poster.file_path);
     if (url) record.posterCandidates.push({
       source: "tmdb", url, width: poster.width, height: poster.height, language: poster.iso_639_1,
