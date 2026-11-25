@@ -315,7 +315,7 @@ class BibliotekaSettingTab extends PluginSettingTab {
         }),
       );
 
-    const omdbSection = apiContent.createEl("details", { cls: "biblioteka-provider-settings" });
+    const omdbSection = apiContent.createEl("details", { cls: "biblioteka-provider-disclosure" });
     omdbSection.createEl("summary", { text: "OMDb" });
     const omdbContent = omdbSection.createDiv({ cls: "biblioteka-settings-section-content" });
     new Setting(omdbContent)
@@ -357,7 +357,7 @@ class BibliotekaSettingTab extends PluginSettingTab {
         }),
       );
 
-    const tmdbSection = apiContent.createEl("details", { cls: "biblioteka-provider-settings" });
+    const tmdbSection = apiContent.createEl("details", { cls: "biblioteka-provider-disclosure" });
     tmdbSection.createEl("summary", { text: "TMDB" });
     const tmdbContent = tmdbSection.createDiv({ cls: "biblioteka-settings-section-content" });
     new Setting(tmdbContent)
@@ -404,8 +404,6 @@ class BibliotekaSettingTab extends PluginSettingTab {
       text: "Settings for movies and TV series.",
       cls: "biblioteka-muted",
     });
-
-
 
     moviesSection.createEl("h4", { text: "Folders", cls: "biblioteka-settings-subheading" });
     new Setting(moviesSection)
@@ -1172,9 +1170,6 @@ async function updateExistingMovieNote(
   }
   if (next !== current) await app.vault.modify(file, next);
 }
-
-
-
 
 function getMovieFieldProperty(settings: BibliotekaSettings, field: MovieField): string {
   return settings.movieFields[field]?.property.trim() || MOVIE_FIELD_DEFAULTS[field].property;
