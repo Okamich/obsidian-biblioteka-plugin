@@ -127,7 +127,7 @@ export default class BibliotekaPlugin extends Plugin {
             ? frontmatter.source_ids as Record<string, string>
             : {};
           frontmatter.source_ids = { ...record.sourceIds, ...existingIds };
-          frontmatter.sources = [...new Set([...Object.keys(existingIds), ...Object.keys(record.sourceIds)])];
+          frontmatter.sources = [...new Set([...Object.keys(existingIds), ...Object.keys(record.sourceIds)].map((id) => getProviderDisplayName(id as MovieProviderId)))];
         });
 
         const current = await this.app.vault.read(file);
@@ -918,7 +918,7 @@ class MediaSearchModal extends Modal {
       const personalRating = Number(read("personalRating"));
       const properties: Record<string, unknown> = {
         type: record.type,
-        sources: Object.keys(sourceIds),
+        sources: Object.keys(sourceIds).map((id) => getProviderDisplayName(id as MovieProviderId)),
         source_ids: sourceIds,
         title,
         tags,
@@ -1007,7 +1007,7 @@ async function updateExistingMovieNote(
     personalReview: read("personalReview"),
     tags,
     source_ids: sourceIds,
-    sources: Object.keys(sourceIds),
+    sources: Object.keys(sourceIds).map((id) => getProviderDisplayName(id as MovieProviderId)),
   };
 
   await app.fileManager.processFrontMatter(file, (fm) => {
@@ -1064,6 +1064,10 @@ function getProviderApiKey(settings: BibliotekaSettings, providerId: MovieProvid
   if (providerId === "kinopoisk") return settings.kinopoiskApiKey.trim();
   if (providerId === "omdb") return settings.omdbApiKey.trim();
   return settings.tmdbApiKey.trim();
+}
+
+function getProviderDisplayName(providerId: MovieProviderId): string {
+  return providerId === "kinopoisk" ? "Кинопоиск" : providerId === "omdb" ? "OMDb" : "TMDB";
 }
 
 function getEnabledProviderIds(settings: BibliotekaSettings): MovieProviderId[] {
