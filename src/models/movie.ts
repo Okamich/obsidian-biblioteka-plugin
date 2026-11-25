@@ -99,6 +99,7 @@ export function mergeMovieRecord(
   target: MovieRecord,
   incoming: Partial<MovieRecord>,
   provider: MovieProviderId,
+  enabledFields?: MovieField[],
 ): MovieRecord {
   const fields: MovieField[] = [
     "title", "originalTitle", "year", "genres", "countries", "plot",
@@ -106,6 +107,7 @@ export function mergeMovieRecord(
   ];
 
   for (const field of fields) {
+    if (enabledFields && !enabledFields.includes(field)) continue;
     const value = incoming[field];
     if (isMissing(target[field]) && !isMissing(value)) {
       (target as unknown as Record<string, unknown>)[field] = value;

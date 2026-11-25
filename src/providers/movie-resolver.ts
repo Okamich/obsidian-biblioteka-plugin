@@ -1,4 +1,4 @@
-import { createEmptyMovieRecord, mergeMovieRecord, MovieProviderId, MovieRecord } from "../models/movie";
+import { createEmptyMovieRecord, mergeMovieRecord, MovieField, MovieProviderId, MovieRecord } from "../models/movie";
 import { KinopoiskProvider } from "./kinopoisk";
 import { OMDbProvider } from "./omdb";
 import { TMDBProvider, TMDBSearchItem } from "./tmdb";
@@ -37,10 +37,11 @@ async function loadKinopoisk(
   provider: KinopoiskProvider,
   selection: MovieSearchSelection,
   record: MovieRecord,
+  enabledFields?: MovieField[],
 ): Promise<MovieRecord | undefined> {
-  if (selection.source === "kinopoisk") return fetchKinopoiskRecord(provider, Number(selection.id));
+  if (selection.source === "kinopoisk") return fetchKinopoiskRecord(provider, Number(selection.id), enabledFields);
   const knownId = record.sourceIds.kinopoisk;
-  if (knownId) return fetchKinopoiskRecord(provider, Number(knownId));
+  if (knownId) return fetchKinopoiskRecord(provider, Number(knownId), enabledFields);
   const response = await provider.search(selection.title);
   const matches = (response.films ?? []).filter((item) =>
     [item.nameRu, item.nameEn, item.nameOriginal].some((title) => isSameTitle(title, selection.title))
@@ -48,17 +49,18 @@ async function loadKinopoisk(
     && (selection.mediaType === "series" ? /TV|SERIES/i.test(item.type ?? "") : !/TV|SERIES/i.test(item.type ?? "")),
   );
   if (matches.length !== 1) return undefined;
-  return fetchKinopoiskRecord(provider, matches[0].filmId);
+  return fetchKinopoiskRecord(provider, matches[0].filmId, enabledFields);
 }
 
 async function loadOMDb(
   provider: OMDbProvider,
   selection: MovieSearchSelection,
   record: MovieRecord,
+  enabledFields?: MovieField[],
 ): Promise<MovieRecord | undefined> {
-  if (selection.source === "omdb") return fetchOMDbRecord(provider, selection.id);
+  if (selection.source === "omdb") return fetchOMDbRecord(provider, selection.id, enabledFields);
   const imdbId = record.externalIds.imdb;
-  if (imdbId) return fetchOMDbRecord(provider, imdbId);
+  if (imdbId) return fetchOMDbRecord(provider, imdbId, enabledFields);
   const response = await provider.search(selection.title, 1, selection.mediaType);
   const matches = (response.Search ?? []).filter((item) =>
     item.Type === selection.mediaType
@@ -66,24 +68,25 @@ async function loadOMDb(
     && sameYear(item.Year, selection.year),
   );
   if (matches.length !== 1) return undefined;
-  return fetchOMDbRecord(provider, matches[0].imdbID);
+  return fetchOMDbRecord(provider, matches[0].imdbID, enabledFields);
 }
 
 async function loadTMDB(
   provider: TMDBProvider,
   selection: MovieSearchSelection,
   record: MovieRecord,
+  enabledFields?: MovieField[],
 ): Promise<MovieRecord | undefined> {
   if (selection.mediaType === "series") return undefined;
-  if (selection.source === "tmdb") return fetchTMDBRecord(provider, Number(selection.id));
+  if (selection.source === "tmdb") return fetchTMDBRecord(provider, Number(selection.id), enabledFields);
   const imdbId = selection.source === "omdb" ? selection.id : record.externalIds.imdb;
   if (imdbId) {
     const found = await provider.findByExternalId(imdbId);
     const matches = found.movie_results ?? [];
-    if (matches.length === 1) return fetchTMDBRecord(provider, matches[0].id);
+    if (matches.length === 1) return fetchTMDBRecord(provider, matches[0].id, enabledFields);
     if (matches.length > 1) {
       const exact = matches.filter((item) => isSameTitle(item.title, selection.title) && sameYear(item.release_date, selection.year));
-      if (exact.length === 1) return fetchTMDBRecord(provider, exact[0].id);
+      if (exact.length === 1) return fetchTMDBRecord(provider, exact[0].id, enabledFields);
     }
     return undefined;
   }
@@ -92,7 +95,7 @@ async function loadTMDB(
     isSameTitle(item.title, selection.title) && sameYear(item.release_date, selection.year),
   );
   if (matches.length !== 1) return undefined;
-  return fetchTMDBRecord(provider, matches[0].id);
+  return fetchTMDBRecord(provider, matches[0].id, enabledFields);
 }
 
 /**
@@ -105,6 +108,7 @@ export async function resolveMovieRecord(
   order: MovieProviderId[],
   keys: MovieProviderKeys,
   onProviderError?: (provider: MovieProviderId, error: unknown) => void,
+  enabledFields?: MovieField[],
 ): Promise<MovieRecord> {
   const record = createEmptyMovieRecord(selection.mediaType === "series" ? "Сериал" : "Фильм");
   let identityRecord: MovieRecord | undefined;
@@ -115,9 +119,9 @@ export async function resolveMovieRecord(
   try {
     const selectedKey = keys[selection.source]?.trim();
     if (selectedKey) {
-      if (selection.source === "kinopoisk") identityRecord = await fetchKinopoiskRecord(new KinopoiskProvider(selectedKey), Number(selection.id));
-      else if (selection.source === "omdb") identityRecord = await fetchOMDbRecord(new OMDbProvider(selectedKey), selection.id);
-      else identityRecord = await fetchTMDBRecord(new TMDBProvider(selectedKey), Number(selection.id));
+      if (selection.source === "kinopoisk") identityRecord = await fetchKinopoiskRecord(new KinopoiskProvider(selectedKey), Number(selection.id), enabledFields);
+      else if (selection.source === "omdb") identityRecord = await fetchOMDbRecord(new OMDbProvider(selectedKey), selection.id, enabledFields);
+      else identityRecord = await fetchTMDBRecord(new TMDBProvider(selectedKey), Number(selection.id), enabledFields);
     }
   } catch (error) {
     onProviderError?.(selection.source, error);
@@ -129,10 +133,10 @@ export async function resolveMovieRecord(
     try {
       let incoming: MovieRecord | undefined;
       if (providerId === selection.source && identityRecord) incoming = identityRecord;
-      else if (providerId === "kinopoisk") incoming = await loadKinopoisk(new KinopoiskProvider(key), selection, identityRecord ?? record);
-      else if (providerId === "omdb") incoming = await loadOMDb(new OMDbProvider(key), selection, identityRecord ?? record);
-      else incoming = await loadTMDB(new TMDBProvider(key), selection, identityRecord ?? record);
-      if (incoming) mergeMovieRecord(record, incoming, providerId);
+      else if (providerId === "kinopoisk") incoming = await loadKinopoisk(new KinopoiskProvider(key), selection, identityRecord ?? record, enabledFields);
+      else if (providerId === "omdb") incoming = await loadOMDb(new OMDbProvider(key), selection, identityRecord ?? record, enabledFields);
+      else incoming = await loadTMDB(new TMDBProvider(key), selection, identityRecord ?? record, enabledFields);
+      if (incoming) mergeMovieRecord(record, incoming, providerId, enabledFields);
     } catch (error) {
       onProviderError?.(providerId, error);
     }

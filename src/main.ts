@@ -17,8 +17,43 @@ import {
 } from "./providers/kinopoisk";
 import { OMDbProvider, OMDbSearchItem } from "./providers/omdb";
 import { TMDBProvider, TMDBSearchItem } from "./providers/tmdb";
-import { MovieRecord, MovieProviderId } from "./models/movie";
+import { MovieField, MovieRecord, MovieProviderId } from "./models/movie";
 import { resolveMovieRecord } from "./providers/movie-resolver";
+
+type MovieFieldSetting = { enabled: boolean; property: string };
+
+const MOVIE_FIELD_DEFAULTS: Record<MovieField, MovieFieldSetting> = {
+  title: { enabled: true, property: "title" },
+  originalTitle: { enabled: true, property: "originalTitle" },
+  year: { enabled: true, property: "year" },
+  genres: { enabled: true, property: "genres" },
+  countries: { enabled: true, property: "countries" },
+  plot: { enabled: true, property: "plot" },
+  director: { enabled: true, property: "director" },
+  writer: { enabled: true, property: "writer" },
+  duration: { enabled: true, property: "duration" },
+  studio: { enabled: true, property: "studio" },
+  actors: { enabled: true, property: "actors" },
+};
+
+const MOVIE_FIELD_LABELS: Record<MovieField, string> = {
+  title: "Title",
+  originalTitle: "Original title",
+  year: "Year",
+  genres: "Genres",
+  countries: "Production countries",
+  plot: "Plot / annotation",
+  director: "Director",
+  writer: "Writer",
+  duration: "Duration",
+  studio: "Studio / production company",
+  actors: "Cast",
+};
+
+const MOVIE_FIELD_ORDER: MovieField[] = [
+  "title", "originalTitle", "year", "genres", "countries", "plot",
+  "director", "writer", "duration", "studio", "actors",
+];
 
 interface BibliotekaSettings {
   defaultMediaFolder: string;
@@ -30,6 +65,7 @@ interface BibliotekaSettings {
   sfwFilter: boolean;
   enabledProviders: Record<MovieProviderId, boolean>;
   providerOrder: MovieProviderId[];
+  movieFields: Record<MovieField, MovieFieldSetting>;
 }
 
 const DEFAULT_SETTINGS: BibliotekaSettings = {
@@ -42,6 +78,7 @@ const DEFAULT_SETTINGS: BibliotekaSettings = {
   sfwFilter: true,
   enabledProviders: { kinopoisk: true, omdb: true, tmdb: true },
   providerOrder: ["kinopoisk", "omdb", "tmdb"],
+  movieFields: MOVIE_FIELD_DEFAULTS,
 };
 
 export default class BibliotekaPlugin extends Plugin {
@@ -81,6 +118,8 @@ export default class BibliotekaPlugin extends Plugin {
       return;
     }
 
+    const titleProperty = getMovieFieldProperty(this.settings, "title");
+    const yearProperty = getMovieFieldProperty(this.settings, "year");
     const files = this.app.vault.getMarkdownFiles();
     const targets = files.filter((file) => {
       const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
@@ -105,8 +144,8 @@ export default class BibliotekaPlugin extends Plugin {
         if (!ids.omdb && fm.imdb_id) ids.omdb = String(fm.imdb_id);
         const source = providerOrder.find((id) => Boolean(ids[id]));
         if (!source) continue;
-        const title = String(fm.title ?? file.basename);
-        const year = Number(fm.year) || 0;
+        const title = String(fm[titleProperty] ?? file.basename);
+        const year = Number(fm[yearProperty]) || 0;
         const mediaType = normalizeMediaType(String(fm.type ?? "")) === "series" ? "series" as const : "movie" as const;
         const record = await resolveMovieRecord(
           { source, id: String(ids[source]), title, year, mediaType },
@@ -117,6 +156,7 @@ export default class BibliotekaPlugin extends Plugin {
             tmdb: this.settings.tmdbApiKey,
           },
           (provider, error) => console.warn(`Biblioteka: ${provider} ratings refresh failed for ${file.path}`, error),
+          getEnabledMovieFields(this.settings),
         );
         if (record.ratings.length === 0) continue;
 
@@ -155,6 +195,18 @@ export default class BibliotekaPlugin extends Plugin {
       ...DEFAULT_SETTINGS.enabledProviders,
       ...(saved?.enabledProviders ?? {}),
     };
+    this.settings.movieFields = Object.fromEntries(
+      MOVIE_FIELD_ORDER.map((field) => {
+        const savedField = saved?.movieFields?.[field] ?? {};
+        return [field, {
+          ...MOVIE_FIELD_DEFAULTS[field],
+          ...savedField,
+          property: typeof savedField.property === "string" && savedField.property.trim()
+            ? savedField.property.trim()
+            : MOVIE_FIELD_DEFAULTS[field].property,
+        }];
+      }),
+    ) as Record<MovieField, MovieFieldSetting>;
     const savedOrder = Array.isArray(saved?.providerOrder) ? saved.providerOrder : [];
     this.settings.providerOrder = [
       ...savedOrder.filter((id: string) => id === "kinopoisk" || id === "omdb" || id === "tmdb"),
@@ -431,6 +483,30 @@ class BibliotekaSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           }),
       );
+
+    containerEl.createEl("h4", { text: "Basic fields" });
+    containerEl.createEl("p", {
+      text: "Choose which movie metadata fields to process and the property name used in note frontmatter.",
+      cls: "biblioteka-muted",
+    });
+    for (const field of MOVIE_FIELD_ORDER) {
+      const fieldSetting = this.plugin.settings.movieFields[field];
+      new Setting(containerEl)
+        .setName(MOVIE_FIELD_LABELS[field])
+        .addText((text) => text
+          .setPlaceholder(MOVIE_FIELD_DEFAULTS[field].property)
+          .setValue(fieldSetting.property)
+          .onChange(async (value) => {
+            this.plugin.settings.movieFields[field].property = value.trim() || MOVIE_FIELD_DEFAULTS[field].property;
+            await this.plugin.saveSettings();
+          }))
+        .addToggle((toggle) => toggle
+          .setValue(fieldSetting.enabled)
+          .onChange(async (value) => {
+            this.plugin.settings.movieFields[field].enabled = value;
+            await this.plugin.saveSettings();
+          }));
+    }
   }
 }
 
@@ -699,6 +775,7 @@ class MediaSearchModal extends Modal {
           tmdb: this.plugin.settings.tmdbApiKey,
         },
         (provider, error) => failures.push(`${provider}: ${getErrorMessage(error)}`),
+        getEnabledMovieFields(this.plugin.settings),
       );
       if (!record.title) record.title = item.title;
       if (!record.year && item.year) record.year = item.year;
@@ -772,16 +849,16 @@ class MediaSearchModal extends Modal {
     };
 
     addField("title", "Title", record.title);
-    addField("originalTitle", "Original title", record.originalTitle);
-    addField("year", "Year", record.year == null ? "" : String(record.year));
-    addField("genres", "Genres (comma-separated)", record.genres.join(", "));
-    addField("countries", "Production countries (comma-separated)", record.countries.join(", "));
-    addField("plot", "Plot", record.plot, true);
-    addField("director", "Director (comma-separated)", record.director.join(", "));
-    addField("writer", "Writer (comma-separated)", record.writer.join(", "));
-    addField("duration", "Duration (minutes)", record.duration == null ? "" : String(record.duration));
-    addField("studio", "Studio (comma-separated)", record.studio.join(", "));
-    addField("actors", "Starring (comma-separated)", record.actors.join(", "));
+    if (this.plugin.settings.movieFields.originalTitle.enabled) addField("originalTitle", "Original title", record.originalTitle);
+    if (this.plugin.settings.movieFields.year.enabled) addField("year", "Year", record.year == null ? "" : String(record.year));
+    if (this.plugin.settings.movieFields.genres.enabled) addField("genres", "Genres (comma-separated)", record.genres.join(", "));
+    if (this.plugin.settings.movieFields.countries.enabled) addField("countries", "Production countries (comma-separated)", record.countries.join(", "));
+    if (this.plugin.settings.movieFields.plot.enabled) addField("plot", "Plot", record.plot, true);
+    if (this.plugin.settings.movieFields.director.enabled) addField("director", "Director (comma-separated)", record.director.join(", "));
+    if (this.plugin.settings.movieFields.writer.enabled) addField("writer", "Writer (comma-separated)", record.writer.join(", "));
+    if (this.plugin.settings.movieFields.duration.enabled) addField("duration", "Duration (minutes)", record.duration == null ? "" : String(record.duration));
+    if (this.plugin.settings.movieFields.studio.enabled) addField("studio", "Studio (comma-separated)", record.studio.join(", "));
+    if (this.plugin.settings.movieFields.actors.enabled) addField("actors", "Starring (comma-separated)", record.actors.join(", "));
 
     const watchedWrap = preview.createDiv({ cls: "biblioteka-preview-field" });
     watchedWrap.createEl("label", { text: "Watch status" });
@@ -858,6 +935,8 @@ class MediaSearchModal extends Modal {
           title,
           year,
           record.type,
+          getMovieFieldProperty(this.plugin.settings, "title"),
+          getMovieFieldProperty(this.plugin.settings, "year"),
         );
         if (duplicates.length > 0) {
           new DuplicateWarningModal(
@@ -870,7 +949,7 @@ class MediaSearchModal extends Modal {
             async (file) => {
               button.setText("Updating…");
               try {
-                await updateExistingMovieNote(this.app, file, record, fields, posterUrl);
+                await updateExistingMovieNote(this.app, file, record, fields, posterUrl, this.plugin.settings.movieFields);
                 new Notice(`Updated: ${file.path}`);
                 this.close();
               } catch (error) {
@@ -920,20 +999,28 @@ class MediaSearchModal extends Modal {
         type: record.type,
         sources: Object.keys(sourceIds).map((id) => getProviderDisplayName(id as MovieProviderId)),
         source_ids: sourceIds,
-        title,
         tags,
       };
-      const originalTitle = read("originalTitle");
-      if (originalTitle) properties.originalTitle = originalTitle;
-      if (year > 0) properties.year = year;
-      if (genres.length) properties.genres = genres;
-      if (countries.length) properties.countries = countries;
-      if (read("plot")) properties.plot = read("plot");
-      for (const key of ["director", "writer", "studio", "actors"] as const) {
-        const values = splitList(read(key));
-        if (values.length) properties[key] = values;
+      const fieldValues: Record<MovieField, unknown> = {
+        title,
+        originalTitle: read("originalTitle"),
+        year: year > 0 ? year : undefined,
+        genres,
+        countries,
+        plot: read("plot"),
+        director: splitList(read("director")),
+        writer: splitList(read("writer")),
+        duration: Number.isFinite(duration) && read("duration") !== "" ? duration : undefined,
+        studio: splitList(read("studio")),
+        actors: splitList(read("actors")),
+      };
+      for (const field of MOVIE_FIELD_ORDER) {
+        const setting = this.plugin.settings.movieFields[field];
+        const value = fieldValues[field];
+        if (setting.enabled && !isEmptyFieldValue(value)) {
+          properties[setting.property.trim() || MOVIE_FIELD_DEFAULTS[field].property] = value;
+        }
       }
-      if (Number.isFinite(duration) && read("duration") !== "") properties.duration = duration;
       if (ratings.length) properties.ratings = ratings;
       if (read("watched")) properties.watched = read("watched");
       if (read("lastWatched")) properties.lastWatched = read("lastWatched");
@@ -943,7 +1030,7 @@ class MediaSearchModal extends Modal {
 
       const frontmatter = Object.entries(properties)
         .filter(([, value]) => value !== undefined && value !== null && value !== "")
-        .map(([key, value]) => `${key}: ${yamlValue(value)}`)
+        .map(([key, value]) => `${yamlPropertyKey(key)}: ${yamlValue(value)}`)
         .join("\n");
       const body = [
         `# ${title}`,
@@ -983,6 +1070,7 @@ async function updateExistingMovieNote(
   record: MovieRecord,
   fields: Record<string, HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
   posterUrl: string,
+  movieFields: Record<MovieField, MovieFieldSetting>,
 ): Promise<void> {
   const read = (key: string): string => fields[key]?.value.trim() ?? "";
   const sourceIds = { ...record.sourceIds };
@@ -990,6 +1078,15 @@ async function updateExistingMovieNote(
   if (!tags.includes("Biblioteka")) tags.push("Biblioteka");
   const candidate: Record<string, unknown> = {
     type: record.type,
+    watched: read("watched"),
+    lastWatched: read("lastWatched"),
+    personalRating: read("personalRating") === "" ? undefined : Number(read("personalRating")),
+    personalReview: read("personalReview"),
+    tags,
+    source_ids: sourceIds,
+    sources: Object.keys(sourceIds).map((id) => getProviderDisplayName(id as MovieProviderId)),
+  };
+  const fieldValues: Record<MovieField, unknown> = {
     title: read("title"),
     originalTitle: read("originalTitle"),
     year: Number(read("year")) || undefined,
@@ -1001,14 +1098,13 @@ async function updateExistingMovieNote(
     duration: read("duration") === "" ? undefined : Number(read("duration")),
     studio: splitList(read("studio")),
     actors: splitList(read("actors")),
-    watched: read("watched"),
-    lastWatched: read("lastWatched"),
-    personalRating: read("personalRating") === "" ? undefined : Number(read("personalRating")),
-    personalReview: read("personalReview"),
-    tags,
-    source_ids: sourceIds,
-    sources: Object.keys(sourceIds).map((id) => getProviderDisplayName(id as MovieProviderId)),
   };
+  for (const field of MOVIE_FIELD_ORDER) {
+    const setting = movieFields[field];
+    if (setting.enabled && fields[field]) {
+      candidate[setting.property.trim() || MOVIE_FIELD_DEFAULTS[field].property] = fieldValues[field];
+    }
+  }
 
   await app.fileManager.processFrontMatter(file, (fm) => {
     const existingIds = (fm.source_ids && typeof fm.source_ids === "object") ? fm.source_ids as Record<string, string> : {};
@@ -1037,7 +1133,7 @@ async function updateExistingMovieNote(
     if (startIndex >= 0 && endIndex > startIndex) next = next.slice(0, startIndex) + block + next.slice(endIndex + end.length);
     else next = `${next.trimEnd()}\n\n${block}\n`;
   }
-  const plot = read("plot");
+  const plot = movieFields.plot.enabled ? read("plot") : "";
   if (plot) {
     const body = next.replace(/^---\n[\s\S]*?\n---\n?/, "").trim();
     const withoutManaged = body
@@ -1059,6 +1155,23 @@ async function updateExistingMovieNote(
 
 
 
+
+function getMovieFieldProperty(settings: BibliotekaSettings, field: MovieField): string {
+  return settings.movieFields[field]?.property.trim() || MOVIE_FIELD_DEFAULTS[field].property;
+}
+
+function getEnabledMovieFields(settings: BibliotekaSettings): MovieField[] {
+  return MOVIE_FIELD_ORDER.filter((field) => settings.movieFields[field]?.enabled !== false);
+}
+
+function isEmptyFieldValue(value: unknown): boolean {
+  return value === undefined || value === null || value === ""
+    || (Array.isArray(value) && value.length === 0);
+}
+
+function yamlPropertyKey(value: string): string {
+  return /^[A-Za-z_][A-Za-z0-9_-]*$/.test(value) ? value : JSON.stringify(value);
+}
 
 function getProviderApiKey(settings: BibliotekaSettings, providerId: MovieProviderId): string {
   if (providerId === "kinopoisk") return settings.kinopoiskApiKey.trim();
@@ -1182,6 +1295,8 @@ async function findDuplicateNotes(
   title: string,
   year: number,
   mediaType: string,
+  titleProperty = "title",
+  yearProperty = "year",
 ): Promise<DuplicateMatch[]> {
   const titleKey = normalizeDuplicateTitle(title);
   const typeKey = normalizeMediaType(mediaType);
@@ -1210,8 +1325,8 @@ async function findDuplicateNotes(
     const noteContent = await app.vault.cachedRead(file);
     const headingTitle = noteContent.match(/^#\s+(.+)$/m)?.[1];
     const fallbackTitle = headingTitle || file.basename.replace(/\s+\d{4}$/, "");
-    const existingTitle = normalizeDuplicateTitle(String(frontmatter.title ?? fallbackTitle));
-    const existingYear = Number(frontmatter.year);
+    const existingTitle = normalizeDuplicateTitle(String(frontmatter[titleProperty] ?? fallbackTitle));
+    const existingYear = Number(frontmatter[yearProperty]);
     const existingType = normalizeMediaType(String(frontmatter.type ?? ""));
 
     if (titleKey && existingTitle === titleKey && year > 0 && existingYear === year
