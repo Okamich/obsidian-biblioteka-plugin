@@ -838,7 +838,7 @@ class MediaSearchModal extends Modal {
       if (!skipDuplicateCheck) {
         const duplicates = await findDuplicateNotes(
           this.app,
-          Number(sourceIds.kinopoisk ?? 0),
+          sourceIds,
           title,
           year,
           record.type,
@@ -992,7 +992,6 @@ async function updateExistingMovieNote(
     tags,
     source_ids: sourceIds,
     sources: Object.keys(sourceIds),
-    ...(posterUrl ? { poster: posterUrl } : {}),
   };
 
   await app.fileManager.processFrontMatter(file, (fm) => {
