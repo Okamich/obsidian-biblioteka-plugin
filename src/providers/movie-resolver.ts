@@ -56,6 +56,7 @@ async function loadOMDb(
   provider: OMDbProvider,
   selection: MovieSearchSelection,
   record: MovieRecord,
+  enabledFields?: MovieField[],
 ): Promise<MovieRecord | undefined> {
   if (selection.source === "omdb") return fetchOMDbRecord(provider, selection.id, enabledFields);
   const imdbId = record.externalIds.imdb;
@@ -74,6 +75,7 @@ async function loadTMDB(
   provider: TMDBProvider,
   selection: MovieSearchSelection,
   record: MovieRecord,
+  enabledFields?: MovieField[],
 ): Promise<MovieRecord | undefined> {
   if (selection.mediaType === "series") return undefined;
   if (selection.source === "tmdb") return fetchTMDBRecord(provider, Number(selection.id), enabledFields);
