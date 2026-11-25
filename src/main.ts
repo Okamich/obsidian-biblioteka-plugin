@@ -741,8 +741,9 @@ class MediaSearchModal extends Modal {
       record.posterCandidates.forEach((candidate, index) => {
         const providerName = candidate.source === "kinopoisk" ? "Kinopoisk" : candidate.source === "omdb" ? "OMDb" : "TMDB";
         const dimensions = candidate.width && candidate.height ? ` · ${candidate.width}×${candidate.height}` : "";
+        const language = candidate.language ? ` · ${candidate.language}` : "";
         select.createEl("option", {
-          text: `${providerName}${dimensions}`,
+          text: `${providerName}${language}${dimensions}`,
           attr: { value: String(index) },
         });
         if (candidate.url === selectedPoster && select.options.length === 1) select.selectedIndex = 0;
