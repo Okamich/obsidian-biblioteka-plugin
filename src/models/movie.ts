@@ -130,7 +130,8 @@ export function mergeMovieRecord(
     if (!exists) target.ratings.push(rating);
   }
 
-  if (incoming.sourceIds?.[provider]) target.sourceIds[provider] = incoming.sourceIds[provider];\n  if (incoming.externalIds?.imdb) target.externalIds.imdb = incoming.externalIds.imdb;
+  if (incoming.sourceIds?.[provider]) target.sourceIds[provider] = incoming.sourceIds[provider];
+  if (incoming.externalIds?.imdb) target.externalIds.imdb = incoming.externalIds.imdb;
   return target;
 }
 
