@@ -461,7 +461,8 @@ interface UnifiedSearchResult {
   posterUrl: string;
   rating?: string | number;
   kinopoiskItem?: KinopoiskSearchItem;
-  omdbItem?: OMDbSearchItem;\n  tmdbItem?: TMDBSearchItem;
+  omdbItem?: OMDbSearchItem;
+  tmdbItem?: TMDBSearchItem;
 }
 
 class MediaSearchModal extends Modal {
