@@ -13,10 +13,9 @@ import {
 import {
   KinopoiskProvider,
   KinopoiskSearchItem,
-  KinopoiskDetails,
   MediaKind,
 } from "./providers/kinopoisk";
-import { OMDbProvider, OMDbDetails, OMDbSearchItem } from "./providers/omdb";
+import { OMDbProvider, OMDbSearchItem } from "./providers/omdb";
 import { TMDBProvider, TMDBSearchItem } from "./providers/tmdb";
 import { MovieRecord, MovieProviderId } from "./models/movie";
 import { resolveMovieRecord } from "./providers/movie-resolver";
@@ -1075,83 +1074,12 @@ function getEnabledProviderIds(settings: BibliotekaSettings): MovieProviderId[] 
   return settings.providerOrder.filter((id) => settings.enabledProviders[id] && Boolean(getProviderApiKey(settings, id)));
 }
 
-function findMatchingOMDb(
-  items: OMDbSearchItem[],
-  title: string,
-  year: number,
-  mediaType: string,
-): OMDbSearchItem | undefined {
-  const titleKey = normalizeDuplicateTitle(title);
-  const matches = items.filter((item) =>
-    normalizeDuplicateTitle(item.Title) === titleKey &&
-    (!year || !Number(item.Year.match(/\d{4}/)?.[0] ?? 0) || Number(item.Year.match(/\d{4}/)?.[0]) === year) &&
-    (mediaType === "TV series" ? item.Type === "series" : item.Type === "movie"),
-  );
-  return matches.length === 1 ? matches[0] : undefined;
-}
-
 interface MediaRating {
   source: string;
   value: number;
   scale?: string;
   votes?: number;
   url?: string;
-}
-
-function buildRatings(details: KinopoiskDetails, omdbDetails?: OMDbDetails, preferOmdb = false): MediaRating[] {
-  const ratings: MediaRating[] = [];
-  if (typeof details.ratingKinopoisk === "number") {
-    ratings.push({
-      source: "Kinopoisk",
-      value: details.ratingKinopoisk,
-      ...(typeof details.ratingKinopoiskVoteCount === "number"
-        ? { votes: details.ratingKinopoiskVoteCount }
-        : {}),
-      ...(details.webUrl ? { url: details.webUrl } : {}),
-    });
-  }
-  const omdbImdbValue = parseRatingNumber(omdbDetails?.imdbRating);
-  const imdbValue = preferOmdb
-    ? (omdbImdbValue ?? details.ratingImdb)
-    : (details.ratingImdb ?? omdbImdbValue);
-  if (typeof imdbValue === "number") {
-    ratings.push({
-      source: "IMDb",
-      value: imdbValue,
-      ...(typeof details.ratingImdbVoteCount === "number"
-        ? { votes: details.ratingImdbVoteCount }
-        : parseVoteCount(omdbDetails?.imdbVotes) != null
-          ? { votes: parseVoteCount(omdbDetails?.imdbVotes) as number }
-          : {}),
-      ...((details.imdbId || omdbDetails?.imdbID)
-        ? { url: `https://www.imdb.com/title/${details.imdbId || omdbDetails?.imdbID}/` }
-        : {}),
-    });
-  }
-
-  for (const rating of omdbDetails?.Ratings ?? []) {
-    const source = rating.Source.trim();
-    if (/internet movie database/i.test(source)) continue;
-    const value = parseRatingNumber(rating.Value);
-    if (value == null) continue;
-    if (ratings.some((existing) => existing.source.toLowerCase() === source.toLowerCase())) continue;
-    ratings.push({ source, value });
-  }
-  return ratings;
-}
-
-function parseRatingNumber(value?: string): number | undefined {
-  if (!value || value === "N/A") return undefined;
-  const match = value.match(/\d+(?:\.\d+)?/);
-  if (!match) return undefined;
-  const parsed = Number(match[0]);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function parseVoteCount(value?: string): number | undefined {
-  if (!value || value === "N/A") return undefined;
-  const parsed = Number(value.replace(/,/g, ""));
-  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function renderRatingsTable(ratings: MediaRating[]): string {
@@ -1246,99 +1174,6 @@ class DuplicateWarningModal extends Modal {
     this.contentEl.empty();
     if (!this.resolved) this.onCancel();
   }
-}
-
-async function updateExistingNote(
-  app: App,
-  file: TFile,
-  details: KinopoiskDetails,
-  fields: Record<string, HTMLInputElement | HTMLTextAreaElement>,
-  omdbDetails?: OMDbDetails,
-  preferOmdb = false,
-): Promise<void> {
-  const read = (key: string): string => fields[key]?.value.trim() ?? "";
-  const ratings = buildRatings(details, omdbDetails, preferOmdb);
-  const candidateProperties: Record<string, unknown> = {
-    type: formatMediaType(details.type),
-  };
-  const kinopoiskId = Number(read("kinopoiskId")) || details.kinopoiskId;
-  if (kinopoiskId > 0) candidateProperties.kinopoisk_id = kinopoiskId;
-
-  const originalTitle = read("originalTitle");
-  const year = Number(read("year"));
-  const genres = splitList(read("genres"));
-  const countries = splitList(read("countries"));
-  const kpRating = Number(read("ratingKinopoisk"));
-  const imdbRating = Number(read("ratingImdb"));
-  const imdbId = read("imdbId");
-  const optionalFields: Record<string, unknown> = {
-    original_title: originalTitle,
-    ...(Number.isFinite(year) && year > 0 ? { year } : {}),
-    ...(genres.length ? { genres } : {}),
-    ...(countries.length ? { countries } : {}),
-    ...(read("ratingKinopoisk") !== "" && Number.isFinite(kpRating) ? { rating_kinopoisk: kpRating } : {}),
-    ...(read("ratingImdb") !== "" && Number.isFinite(imdbRating) ? { rating_imdb: imdbRating } : {}),
-    imdb_id: imdbId,
-    director: read("director"),
-    writer: read("writer"),
-    actors: read("actors"),
-    runtime: read("runtime"),
-    language: read("language"),
-    awards: read("awards"),
-    rated: read("rated"),
-    metascore: read("metascore"),
-  };
-  for (const [key, value] of Object.entries(optionalFields)) {
-    if (value !== "" && value !== undefined) candidateProperties[key] = value;
-  }
-
-  await app.fileManager.processFrontMatter(file, (fm) => {
-    for (const [key, value] of Object.entries(candidateProperties)) {
-      const current = fm[key];
-      const isMissing = current === undefined || current === null || current === "";
-      if (isMissing) fm[key] = value;
-    }
-    // Ratings are the one intentional exception: always refresh them from the current providers.
-    if (ratings.length) fm.ratings = ratings;
-  });
-
-  const current = await app.vault.read(file);
-  let next = current;
-  const start = "<!-- biblioteka:ratings:start -->";
-  const end = "<!-- biblioteka:ratings:end -->";
-  if (ratings.length) {
-    const block = [start, "## Ratings", "", renderRatingsTable(ratings), end].join("\n");
-    const startIndex = next.indexOf(start);
-    const endIndex = next.indexOf(end);
-    if (startIndex >= 0 && endIndex > startIndex) {
-      next = next.slice(0, startIndex) + block + next.slice(endIndex + end.length);
-    } else {
-      next = `${next.trimEnd()}\n\n${block}\n`;
-    }
-  }
-
-  const description = read("description");
-  if (description) {
-    const body = next.replace(/^---\n[\s\S]*?\n---\n?/, "").trim();
-    const meaningfulBody = body
-      .replace(/^# .*$/m, "")
-      .replace(/!\[\[[^\]]+\]\]/g, "")
-      .replace(/\[Kinopoisk\]\([^\)]+\)/g, "")
-      .replace(/<!-- biblioteka:ratings:start -->[\s\S]*?<!-- biblioteka:ratings:end -->/g, "")
-      .trim();
-    if (!meaningfulBody) {
-      const heading = `# ${read("title")}\n`;
-      const headingIndex = next.indexOf(heading);
-      if (headingIndex >= 0) {
-        const insertAt = headingIndex + heading.length;
-        next = `${next.slice(0, insertAt)}\n${description}\n${next.slice(insertAt)}`;
-      } else {
-        next = `${next.trimEnd()}\n\n${description}\n`;
-      }
-    }
-  }
-
-  if (next !== current) await app.vault.modify(file, next);
 }
 
 async function findDuplicateNotes(
