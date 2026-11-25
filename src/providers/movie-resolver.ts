@@ -74,6 +74,7 @@ async function loadTMDB(
   selection: MovieSearchSelection,
   record: MovieRecord,
 ): Promise<MovieRecord | undefined> {
+  if (selection.mediaType === "series") return undefined;
   if (selection.source === "tmdb") return fetchTMDBRecord(provider, Number(selection.id));
   const imdbId = selection.source === "omdb" ? selection.id : record.externalIds.imdb;
   if (imdbId) {
