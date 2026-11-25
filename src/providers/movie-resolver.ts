@@ -107,15 +107,31 @@ export async function resolveMovieRecord(
   onProviderError?: (provider: MovieProviderId, error: unknown) => void,
 ): Promise<MovieRecord> {
   const record = createEmptyMovieRecord(selection.mediaType === "series" ? "Сериал" : "Фильм");
+  let identityRecord: MovieRecord | undefined;
+
+  // Resolve the selected search hit once to obtain stable cross-provider IDs.
+  // Its fields are not merged early: the configured provider order still
+  // determines which source wins each field.
+  try {
+    const selectedKey = keys[selection.source]?.trim();
+    if (selectedKey) {
+      if (selection.source === "kinopoisk") identityRecord = await fetchKinopoiskRecord(new KinopoiskProvider(selectedKey), Number(selection.id));
+      else if (selection.source === "omdb") identityRecord = await fetchOMDbRecord(new OMDbProvider(selectedKey), selection.id);
+      else identityRecord = await fetchTMDBRecord(new TMDBProvider(selectedKey), Number(selection.id));
+    }
+  } catch (error) {
+    onProviderError?.(selection.source, error);
+  }
 
   for (const providerId of order) {
     const key = keys[providerId]?.trim();
     if (!key) continue;
     try {
       let incoming: MovieRecord | undefined;
-      if (providerId === "kinopoisk") incoming = await loadKinopoisk(new KinopoiskProvider(key), selection, record);
-      else if (providerId === "omdb") incoming = await loadOMDb(new OMDbProvider(key), selection, record);
-      else incoming = await loadTMDB(new TMDBProvider(key), selection, record);
+      if (providerId === selection.source && identityRecord) incoming = identityRecord;
+      else if (providerId === "kinopoisk") incoming = await loadKinopoisk(new KinopoiskProvider(key), selection, identityRecord ?? record);
+      else if (providerId === "omdb") incoming = await loadOMDb(new OMDbProvider(key), selection, identityRecord ?? record);
+      else incoming = await loadTMDB(new TMDBProvider(key), selection, identityRecord ?? record);
       if (incoming) mergeMovieRecord(record, incoming, providerId);
     } catch (error) {
       onProviderError?.(providerId, error);
