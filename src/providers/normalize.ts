@@ -87,6 +87,8 @@ export function normalizeOMDb(details: OMDbDetails): MovieRecord {
   if (record.poster) record.posterCandidates.push({ source: "omdb", url: record.poster });
   record.ratings.push(...rating("IMDb", parseRating(details.imdbRating), parseVotes(details.imdbVotes),
     details.imdbID ? `https://www.imdb.com/title/${details.imdbID}/` : undefined));
+  const metascore = parseRating(details.Metascore);
+  if (metascore != null) record.ratings.push({ source: "Metascore", value: metascore, scale: "100" });
   for (const item of details.Ratings ?? []) {
     if (/internet movie database/i.test(item.Source)) continue;
     const parsed = parseRatingDetails(item.Value);
