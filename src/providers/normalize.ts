@@ -161,7 +161,8 @@ export async function fetchOMDbRecord(provider: OMDbProvider, id: string, enable
 }
 
 export async function fetchTMDBRecord(provider: TMDBProvider, id: number, enabledFields?: MovieField[]): Promise<MovieRecord> {
-  return normalizeTMDB(await provider.getDetails(id), provider, enabledFields);
+  const needsCredits = ["director", "writer", "actors"].some((field) => fieldEnabled(enabledFields, field as MovieField));
+  return normalizeTMDB(await provider.getDetails(id, needsCredits), provider, enabledFields);
 }
 
 export function mergeProviderRecord(target: MovieRecord, incoming: MovieRecord, provider: "kinopoisk" | "omdb" | "tmdb"): MovieRecord {
