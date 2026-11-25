@@ -29,10 +29,19 @@ function unique(values: Array<string | undefined>): string[] {
   return [...new Set(values.map((value) => clean(value)).filter(Boolean))];
 }
 
-function rating(source: string, value?: number, votes?: number, url?: string): MovieRating[] {
+function rating(source: string, value?: number, votes?: number, url?: string, scale = "10"): MovieRating[] {
   return typeof value === "number" && Number.isFinite(value)
-    ? [{ source, value, ...(typeof votes === "number" ? { votes } : {}), ...(url ? { url } : {}) }]
+    ? [{ source, value, scale, ...(typeof votes === "number" ? { votes } : {}), ...(url ? { url } : {}) }]
     : [];
+}
+
+function parseRatingDetails(value: string): { value: number; scale?: string } | undefined {
+  const parsed = parseRating(value);
+  if (parsed == null) return undefined;
+  if (value.includes("%")) return { value: parsed, scale: "%" };
+  if (/\/100\b/.test(value)) return { value: parsed, scale: "100" };
+  if (/\/10\b/.test(value)) return { value: parsed, scale: "10" };
+  return { value: parsed };
 }
 
 export function normalizeKinopoisk(
@@ -80,8 +89,8 @@ export function normalizeOMDb(details: OMDbDetails): MovieRecord {
     details.imdbID ? `https://www.imdb.com/title/${details.imdbID}/` : undefined));
   for (const item of details.Ratings ?? []) {
     if (/internet movie database/i.test(item.Source)) continue;
-    const value = parseRating(item.Value);
-    if (value != null) record.ratings.push({ source: item.Source, value });
+    const parsed = parseRatingDetails(item.Value);
+    if (parsed) record.ratings.push({ source: item.Source, ...parsed });
   }
   if (details.imdbID) { record.sourceIds.omdb = details.imdbID; record.externalIds.imdb = details.imdbID; }
   return record;
