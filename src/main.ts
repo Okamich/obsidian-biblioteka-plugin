@@ -1021,7 +1021,7 @@ async function updateExistingMovieNote(
       const current = fm[key];
       if (current === undefined || current === null || current === "") fm[key] = value;
     }
-    const existingTags = Array.isArray(fm.tags) ? fm.tags as string[] : [];
+    const existingTags = Array.isArray(fm.tags) ? fm.tags as string[] : typeof fm.tags === "string" ? [fm.tags] : [];
     fm.tags = [...new Set([...existingTags, ...tags, "Biblioteka"])];
     if (record.ratings.length) fm.ratings = record.ratings;
   });
