@@ -269,12 +269,12 @@ class BibliotekaSettingTab extends PluginSettingTab {
     const apiSection = containerEl.createEl("details", { cls: "biblioteka-settings-disclosure" });
     apiSection.createEl("summary", { text: "API" });
     const apiContent = apiSection.createDiv({ cls: "biblioteka-settings-section-content" });
-    const apiGroup = new SettingGroup(apiContent);
-    const apiProviders = apiGroup.listEl;
     apiContent.createEl("p", {
       text: "Manage API keys and test connections. Keys are stored in plugin settings, not in media notes.",
       cls: "biblioteka-muted",
     });
+    const apiGroup = new SettingGroup(apiContent);
+    const apiProviders = apiGroup.listEl;
 
     const kinopoiskSection = apiProviders.createEl("details", { cls: "biblioteka-provider-disclosure" });
     kinopoiskSection.createEl("summary", { text: "Kinopoisk" });
@@ -514,9 +514,10 @@ class BibliotekaSettingTab extends PluginSettingTab {
       text: "Choose which movie metadata fields to process and the property name used in note frontmatter.",
       cls: "biblioteka-muted",
     });
+    const metadataGroup = new SettingGroup(fieldsContent);
     for (const field of MOVIE_FIELD_ORDER) {
       const fieldSetting = this.plugin.settings.movieFields[field];
-      new Setting(fieldsContent)
+      new Setting(metadataGroup.listEl)
         .setName(MOVIE_FIELD_LABELS[field])
         .addText((text) => text
           .setPlaceholder(MOVIE_FIELD_DEFAULTS[field].property)
