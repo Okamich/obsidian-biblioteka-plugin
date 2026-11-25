@@ -1022,7 +1022,7 @@ async function updateExistingMovieNote(
       if (current === undefined || current === null || current === "") fm[key] = value;
     }
     const existingTags = Array.isArray(fm.tags) ? fm.tags as string[] : [];
-    if (!existingTags.includes("Biblioteka")) fm.tags = [...existingTags, "Biblioteka"];
+    fm.tags = [...new Set([...existingTags, ...tags, "Biblioteka"])];
     if (record.ratings.length) fm.ratings = record.ratings;
   });
 
