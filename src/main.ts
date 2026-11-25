@@ -27,9 +27,10 @@ interface BibliotekaSettings {
   movieFileNameTemplate: string;
   kinopoiskApiKey: string;
   omdbApiKey: string;
+  tmdbApiKey: string;
   sfwFilter: boolean;
-  enabledProviders: { kinopoisk: boolean; omdb: boolean };
-  providerOrder: Array<"kinopoisk" | "omdb">;
+  enabledProviders: Record<MovieProviderId, boolean>;
+  providerOrder: MovieProviderId[];
 }
 
 const DEFAULT_SETTINGS: BibliotekaSettings = {
@@ -38,9 +39,10 @@ const DEFAULT_SETTINGS: BibliotekaSettings = {
   movieFileNameTemplate: "{{title}} {{year}}",
   kinopoiskApiKey: "",
   omdbApiKey: "",
+  tmdbApiKey: "",
   sfwFilter: true,
-  enabledProviders: { kinopoisk: true, omdb: true },
-  providerOrder: ["kinopoisk", "omdb"],
+  enabledProviders: { kinopoisk: true, omdb: true, tmdb: true },
+  providerOrder: ["kinopoisk", "omdb", "tmdb"],
 };
 
 export default class BibliotekaPlugin extends Plugin {
