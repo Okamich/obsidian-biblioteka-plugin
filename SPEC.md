@@ -41,7 +41,8 @@ Default provider order: Kinopoisk → OMDb → TMDB. Provider priority is config
 | Arrays | Simple YAML arrays of strings |
 | Empty values | Do not write null, undefined, empty strings or empty arrays |
 | Valid values | 0 and false are valid |
-| Disabled fields | Do not request or write them where API capabilities permit |
+| Disabled fields | Do not normalize, merge, preview or write them; skip optional API requests where possible |
+| Movie properties | Each basic metadata field has an enable toggle and configurable YAML property name |
 | Preview provenance | Show the provider that supplied each field |
 | Preview editing | Allow manual edits without changing provider responses |
 | Full metadata refresh | Out of MVP scope |
@@ -194,8 +195,9 @@ The MVP must allow the user to:
 8. Create Markdown notes from custom templates.
 9. Detect and warn about duplicates.
 10. Refresh ratings manually.
-11. Use the plugin on Desktop and Android.
-12. Retain collected data when an individual provider fails.
+11. Enable/disable basic metadata fields and customize their YAML property names.
+12. Use the plugin on Desktop and Android.
+13. Retain collected data when an individual provider fails.
 
 ## 16. Deferred decisions / backlog
 
@@ -226,6 +228,16 @@ The MVP must allow the user to:
 ## 17. Shared movie data model (v1.0)
 
 All movie providers must normalize their responses into one shared `MovieRecord`. Provider-specific response shapes must not leak into the UI or note writer.
+
+### Configurable basic fields
+
+The Movies settings section exposes the core metadata fields. Each field has:
+- An enable/disable toggle.
+- A configurable YAML frontmatter property name, defaulting to the current schema name.
+
+The current configurable set is `title`, `originalTitle`, `year`, `genres`, `countries`, `plot`, `director`, `writer`, `duration`, `studio`, and `actors`. Disabled fields are excluded from normalization, merge, Preview, and note writing. Optional supplemental requests (such as Kinopoisk staff and TMDB credits) are skipped when all fields they provide are disabled. Provider detail endpoints may still return bundled fields that cannot be requested individually; those values are ignored.
+
+Ratings, poster candidates, source IDs, media type, and user-owned fields remain separate from this setting.
 
 ### Metadata fields
 
