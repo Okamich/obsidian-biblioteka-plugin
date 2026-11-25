@@ -105,7 +105,7 @@ type Award = {
 
 type ReleaseDate = {
   country?: string;      // ISO 3166-1 alpha-2; absent only for unscoped OMDb date
-  date: string;          // YYYY-MM-DD when source precision permits
+  date: string;          // YYYY-MM-DD, YYYY-MM or YYYY according to source precision
   type?: "premiere" | "theatrical_limited" | "theatrical" |
          "digital" | "physical" | "tv" | "other";
   certification?: string;
@@ -176,7 +176,7 @@ If the provider returns `N/A`, an empty string or no meaningful award text, it c
 
 Both forms are valid:
 
-- `{{released}}` — return all available release-date records with known country/date, plus an unscoped OMDb date if available.
+- `{{released}}` — return all available release-date records with known country/date, plus an unscoped OMDb date if available. There is intentionally no result cap: across many countries and release types, this array can contain dozens or hundreds of records.
 - `{{released:[USA,RU,CH]}}` — return only records for the requested countries. OMDb's `Released` field has no country metadata, so it is excluded from country-filtered results. Do not assume it means US.
 
 Rules:
@@ -202,9 +202,9 @@ Rules:
 
 ## 4. Collection limits, ordering and deduplication
 
-Multi-provider collections use **concatenation, not first-non-empty fallback**: append each provider's normalized items in configured provider order, deduplicate, then apply the collection cap. Preserve each provider's internal order; do not invent a popularity sort unless the endpoint itself defines the order. This applies to `awards`, `videos`, `similar`, `relations` and `recommendations`. `facts` currently has Kinopoisk as its only source. `ratings` continues to merge score entries from all providers as the existing base resolver does.
+Multi-provider collections use **concatenation, not first-non-empty fallback**: append each provider's normalized items in configured provider order, deduplicate, then apply the collection cap. Preserve each provider's internal order; do not invent a popularity sort unless the endpoint itself defines the order. This applies to `awards`, `videos` and `similar`. `relations` and `recommendations` are currently single-source collections; their items are still normalized and deduplicated, but no cross-provider merge is performed for them. `facts` currently has Kinopoisk as its only source. `ratings` continues to merge score entries from all providers as the existing base resolver does.
 
-When a merged collection exceeds its cap, retain at least one item from every provider that contributed items, then fill remaining slots in configured provider order. This prevents a full first-provider page (for example, 50 Kinopoisk awards) from silently discarding the only OMDb summary item. The final array never exceeds the cap.
+When a merged collection exceeds its cap, determine provider contributions **after deduplication**. A provider whose every item was deduplicated against an earlier provider is not considered a contributor and does not reserve a slot. Retain the first surviving item from each provider that still has at least one item after deduplication, then fill remaining slots in configured provider order. This prevents a full first-provider page (for example, 50 Kinopoisk awards) from silently discarding the only OMDb summary item, without reserving slots for duplicate-only contributions. The final array never exceeds the cap.
 
 | Collection | Maximum returned |
 |---|---:|
@@ -215,12 +215,12 @@ When a merged collection exceeds its cap, retain at least one item from every pr
 | Similar titles | 20 |
 | Recommendations | 20 |
 | Relations | 50 |
-| Release dates | All matching records; country filter limits scope |
+| Release dates | All matching records; country filter limits scope; unscoped results may be large |
 
 - For paginated Kinopoisk endpoints, fetch only as many pages as needed to reach the cap, then stop. Do not fetch the remaining pages.
 - TMDB similar/recommendation endpoints return paginated results; use page 1 only for this MVP, then cap the normalized list at 20.
 - Deduplicate movie references by strongest available identity in this order: TMDB ID, IMDb ID, Kinopoisk ID, then normalized title + year. Keep the first occurrence according to configured provider order.
-- Deduplicate relations by movie identity. If the same movie appears in both Kinopoisk `/relations` and `/sequels_and_prequels`, retain one relation and prefer the more specific relation type. Priority is `SEQUEL` / `PREQUEL` / `REMAKE` > other explicit relation types > `SIMILAR` > `UNKNOWN`. Do not emit duplicate movie references merely because two endpoints returned them.
+- Deduplicate relations by movie identity. If the same movie appears in both Kinopoisk `/relations` and `/sequels_and_prequels`, retain one relation and prefer the more specific relation type. Priority is `SEQUEL` / `PREQUEL` / `REMAKE` > other explicit relation types > `SIMILAR` > `UNKNOWN`. When two candidates have the same priority, keep the first one in the documented endpoint order: `/relations` before `/sequels_and_prequels`. Do not emit duplicate movie references merely because two endpoints returned them.
 - Deduplicate awards/videos/facts only when a stable provider ID exists; otherwise preserve distinct provider entries rather than guessing equivalence.
 
 ## 5. Provider capability map
@@ -326,7 +326,7 @@ The renderer receives typed values; it must not stringify arrays/objects prematu
 - Arrays and objects are serialized as valid YAML collections.
 - Multiline strings use a valid YAML block scalar. The renderer owns indentation and escaping.
 - If the complete value is missing, omit the entire property.
-- For a composed YAML scalar containing literal text plus placeholders, write the template without manually adding YAML quotes (for example `title: {{title}} ({{year}})`). The renderer produces one safely quoted string after substitution; remove missing tokens and empty paired wrappers as described above.
+- For a composed YAML scalar containing literal text plus placeholders, write the template without manually adding YAML quotes (for example `title: {{title}} ({{year}})`). After substitution, the renderer always emits the completed value as one double-quoted YAML string and escapes its contents; remove missing tokens and empty paired wrappers as described above.
 - In a composed YAML scalar, arrays use the same inline form as Markdown prose: items joined by comma + space. Objects use the same concise inline summary as Markdown prose; `Money` becomes `<amount> <currency>`. The resulting composed value is one quoted YAML string, not a nested YAML array/object.
 
 ### Markdown body
@@ -342,10 +342,11 @@ The renderer receives typed values; it must not stringify arrays/objects prematu
 
 1. Biblioteka parses and resolves its own variables.
 2. Biblioteka renders valid YAML and Markdown.
-3. If Templater is enabled and available, Templater processes the rendered note.
-4. Templater runs against a temporary in-memory/file copy of the fully Biblioteka-rendered note. Biblioteka commits the Templater result only after the entire Templater pass succeeds. If Templater throws, is unavailable, or fails partway through, discard all partial Templater mutations, keep the untouched Biblioteka-rendered note, show a warning, and continue note creation with that version. Never leave a partially Templater-processed note.
+3. If Templater is enabled and available, Biblioteka creates a temporary **real `TFile` in the vault** containing the fully rendered note, then asks Templater to process that file. Do not rely on an in-memory-only file copy: Templater commands such as `tp.file.move` and `tp.file.create_new` require a real vault file context.
+4. Biblioteka reads the completed staging file and commits its content to the intended destination only after the entire Templater pass succeeds. Staging and finalization should be handled as a staged content commit; do not expose partially processed content as the final note. This is an application-level content guarantee, not a promise of a filesystem-wide transaction or rollback of vault side effects.
+5. If Templater is unavailable, throws, fails partway through, or the staging file cannot be safely recovered after processing, discard the staged note content, preserve the untouched Biblioteka-rendered version, show a warning, and continue note creation with that version. Clean up the temporary staging file when it is still present and safe to remove.
 
-Templater is optional. Do not require users to call internal Biblioteka functions for standard variables. A Templater failure must not roll back or corrupt the successfully rendered Biblioteka note.
+**Atomicity boundary:** the fallback guarantee covers only the content Biblioteka chooses for the destination note. It does not undo side effects outside that content. For example, `tp.file.move` may move the staging file, `tp.file.create_new` may create another note, and user scripts or external requests may change other files or external systems. Such side effects are outside Biblioteka's rollback guarantee and may remain even when the Templater content is discarded. The guide must warn users about this. Templater is optional. Do not require users to call internal Biblioteka functions for standard variables.
 
 ## 10. Non-goals
 
