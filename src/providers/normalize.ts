@@ -49,7 +49,7 @@ export function normalizeKinopoisk(
   staff: KinopoiskStaffItem[] = [],
 ): MovieRecord {
   const kpType = (details.type ?? "").toUpperCase();
-  const record = createEmptyMovieRecord(kpType.includes("TV") || kpType.includes("SERIES") ? "Сериал" : kpType === "TV_SHOW" ? "ТВ-шоу" : "Фильм");
+  const record = createEmptyMovieRecord(kpType === "TV_SHOW" ? "ТВ-шоу" : kpType.includes("TV") || kpType.includes("SERIES") ? "Сериал" : "Фильм");
   record.title = clean(details.nameRu) || clean(details.nameEn) || clean(details.nameOriginal);
   record.originalTitle = clean(details.nameOriginal);
   record.year = details.year ?? null;
