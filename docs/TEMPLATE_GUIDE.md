@@ -209,7 +209,7 @@ Use a country list when you need specific territories:
 released: {{released:[USA,RU,CH]}}
 ```
 
-You can also write `{{released}}` without arguments to request all available release dates.
+You can also write `{{released}}` without arguments to request all available release dates. **This unscoped form can return a large array**: TMDB may provide many countries and multiple release types per country, so dozens or even hundreds of entries are possible. Use a country filter when you only need selected territories.
 
 Country codes can be ISO alpha-2 or alpha-3 where recognized, such as `US` / `USA`. Biblioteka normalizes them internally.
 
@@ -245,7 +245,7 @@ If a value is unavailable:
 - empty paired wrappers such as `()` are removed after a missing value;
 - no fake `N/A`, `unknown` or empty list item is added.
 
-For example, `title: {{title}} ({{year}})` becomes `title: "Example Film"` if the year is unavailable. Do not add your own YAML quotes around placeholders; the renderer quotes the completed value.
+For example, `title: {{title}} ({{year}})` becomes `title: "Example Film"` if the year is unavailable. Do not add your own YAML quotes around placeholders. For a composed YAML scalar containing literal text and placeholders, the renderer always emits the completed value as one double-quoted YAML string and escapes its contents.
 
 If you mistype a variable, Biblioteka leaves the unknown token visible and shows a warning. Variable names are case-sensitive: `{{title}}` works; `{{Title}}` is unknown.
 
@@ -258,7 +258,9 @@ Templater is optional. Processing order is:
 1. Biblioteka resolves its own variables and renders the note.
 2. If Templater is enabled and available, it processes the rendered note.
 
-If Templater is not installed, is disabled, or becomes unavailable, Biblioteka warns and ordinary note creation remains available. If Templater starts but fails partway through, Biblioteka discards all partial Templater changes and keeps the untouched note already rendered by Biblioteka. The note is created from that version, never from a partially processed result. The built-in template and regular custom Markdown templates do not require Templater.
+If Templater is not installed, is disabled, or becomes unavailable, Biblioteka warns and ordinary note creation remains available. Templater needs a real file in the vault for commands such as `tp.file.move` and `tp.file.create_new`, so Biblioteka processes a temporary staging note rather than relying on an in-memory-only copy. If Templater fails partway through, Biblioteka discards the staged note content and creates the destination from the untouched version already rendered by Biblioteka. It never uses partially processed content as the final note.
+
+**Important limitation:** this fallback protects the content of the destination note only. It cannot roll back Templater side effects outside that content. For example, `tp.file.move` may move the temporary staging file, `tp.file.create_new` may leave an additional note behind, and user scripts or external requests may modify other files or external systems. Those side effects may remain even if Biblioteka discards the staged content. The built-in template and regular custom Markdown templates do not require Templater.
 
 ## 10. Current scope
 
