@@ -82,7 +82,7 @@ export function normalizeOMDb(details: OMDbDetails, enabledFields?: MovieField[]
   const record = createEmptyMovieRecord(details.Type === "series" ? "Сериал" : "Фильм");
   if (fieldEnabled(enabledFields, "title")) record.title = clean(details.Title);
   // OMDb Title is not guaranteed to be the original title; do not populate originalTitle from it.
-  record.year = Number(details.Year.match(/\d{4}/)?.[0] ?? 0) || null;
+  if (fieldEnabled(enabledFields, "year")) record.year = Number(details.Year.match(/\d{4}/)?.[0] ?? 0) || null;
   if (fieldEnabled(enabledFields, "genres")) record.genres = split(details.Genre);
   if (fieldEnabled(enabledFields, "countries")) record.countries = split(details.Country);
   if (fieldEnabled(enabledFields, "studio")) record.studio = split(details.Production);
@@ -90,7 +90,7 @@ export function normalizeOMDb(details: OMDbDetails, enabledFields?: MovieField[]
   if (fieldEnabled(enabledFields, "director")) record.director = split(details.Director);
   if (fieldEnabled(enabledFields, "writer")) record.writer = split(details.Writer);
   if (fieldEnabled(enabledFields, "actors")) record.actors = split(details.Actors);
-  record.duration = Number(details.Runtime?.match(/\d+/)?.[0] ?? 0) || null;
+  if (fieldEnabled(enabledFields, "duration")) record.duration = Number(details.Runtime?.match(/\d+/)?.[0] ?? 0) || null;
   record.poster = clean(details.Poster);
   if (record.poster) record.posterCandidates.push({ source: "omdb", url: record.poster });
   record.ratings.push(...rating("IMDb", parseRating(details.imdbRating), parseVotes(details.imdbVotes),
