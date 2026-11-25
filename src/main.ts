@@ -1045,11 +1045,14 @@ async function updateExistingMovieNote(
 
 
 
-function getEnabledProviderIds(settings: BibliotekaSettings): Array<"kinopoisk" | "omdb"> {
-  return settings.providerOrder.filter((id) =>
-    settings.enabledProviders[id] &&
-    Boolean(settings[id === "kinopoisk" ? "kinopoiskApiKey" : "omdbApiKey"].trim()),
-  );
+function getProviderApiKey(settings: BibliotekaSettings, providerId: MovieProviderId): string {
+  if (providerId === "kinopoisk") return settings.kinopoiskApiKey.trim();
+  if (providerId === "omdb") return settings.omdbApiKey.trim();
+  return settings.tmdbApiKey.trim();
+}
+
+function getEnabledProviderIds(settings: BibliotekaSettings): MovieProviderId[] {
+  return settings.providerOrder.filter((id) => settings.enabledProviders[id] && Boolean(getProviderApiKey(settings, id)));
 }
 
 function findMatchingOMDb(
