@@ -102,7 +102,7 @@ export function normalizeTMDB(details: TMDBMovieDetails, provider: TMDBProvider)
   record.actors = unique((details.credits?.cast ?? []).sort((a, b) => a.order - b.order).slice(0, 10).map((item) => item.name));
   record.poster = provider.posterUrl(details.poster_path);
   if (record.poster) record.posterCandidates.push({ source: "tmdb", url: record.poster });
-  record.ratings.push(...rating("TMDB", details.vote_average, details.vote_count,
+  if ((details.vote_count ?? 0) > 0) record.ratings.push(...rating("TMDB", details.vote_average, details.vote_count,
     `https://www.themoviedb.org/movie/${details.id}`));
   if (details.external_ids?.imdb_id) record.externalIds.imdb = details.external_ids.imdb_id;
   record.sourceIds.tmdb = String(details.id);
