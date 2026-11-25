@@ -244,7 +244,7 @@ For example, `title: "{{title}} ({{year}})"` becomes `title: "Example Film"` if 
 
 If you mistype a variable, Biblioteka leaves the unknown token visible and shows a warning. Variable names are case-sensitive: `{{title}}` works; `{{Title}}` is unknown.
 
-To show literal braces instead of invoking a variable, escape the opening braces: `\\{{title}}` renders as `{{title}}`.
+To show literal braces instead of invoking a variable, escape the opening braces: `\{{title}}` renders as `{{title}}`.
 
 ## 9. Templater
 
