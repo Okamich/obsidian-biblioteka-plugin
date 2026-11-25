@@ -809,7 +809,7 @@ class MediaSearchModal extends Modal {
       const ratings = preview.createDiv({ cls: "biblioteka-preview-field" });
       ratings.createEl("label", { text: "Ratings collected from all matched sources" });
       ratings.createEl("div", { text: record.ratings.map((item) =>
-        `${item.source}: ${item.value}${item.votes != null ? ` (${item.votes.toLocaleString()} votes)` : ""}`,
+        `${item.source}: ${item.value}${item.scale ? `/${item.scale}` : ""}${item.votes != null ? ` (${item.votes.toLocaleString()} votes)` : ""}`,
       ).join(" · "), cls: "biblioteka-muted" });
     }
 
@@ -1092,6 +1092,7 @@ function findMatchingOMDb(
 interface MediaRating {
   source: string;
   value: number;
+  scale?: string;
   votes?: number;
   url?: string;
 }
@@ -1160,7 +1161,7 @@ function renderRatingsTable(ratings: MediaRating[]): string {
     const votes = typeof rating.votes === "number"
       ? rating.votes.toLocaleString("en-US")
       : "—";
-    return `| ${source} | ${rating.value} | ${votes} |`;
+    return `| ${source} | ${rating.value}${rating.scale ? `/${rating.scale}` : ""} | ${votes} |`;
   });
   return [
     "| Source | Rating | Votes |",
