@@ -237,7 +237,7 @@ class BibliotekaSettingTab extends PluginSettingTab {
       cls: "biblioteka-status",
     });
 
-    const generalSection = containerEl.createDiv({ cls: "biblioteka-settings-section" });
+    const generalSection = containerEl.createDiv({ cls: "biblioteka-settings-group" });
     generalSection.createEl("h3", { text: "General" });
     new Setting(generalSection)
       .setName("Library folder")
@@ -265,7 +265,7 @@ class BibliotekaSettingTab extends PluginSettingTab {
           }),
       );
 
-    const apiSection = containerEl.createEl("details", { cls: "biblioteka-settings-section biblioteka-settings-disclosure" });
+    const apiSection = containerEl.createEl("details", { cls: "biblioteka-settings-disclosure" });
     apiSection.createEl("summary", { text: "API" });
     const apiContent = apiSection.createDiv({ cls: "biblioteka-settings-section-content" });
     apiContent.createEl("p", {
@@ -273,7 +273,7 @@ class BibliotekaSettingTab extends PluginSettingTab {
       cls: "biblioteka-muted",
     });
 
-    const kinopoiskSection = apiContent.createEl("details", { cls: "biblioteka-provider-settings" });
+    const kinopoiskSection = apiContent.createEl("details", { cls: "biblioteka-provider-disclosure" });
     kinopoiskSection.createEl("summary", { text: "Kinopoisk" });
     const kinopoiskContent = kinopoiskSection.createDiv({ cls: "biblioteka-settings-section-content" });
     new Setting(kinopoiskContent)
@@ -398,7 +398,7 @@ class BibliotekaSettingTab extends PluginSettingTab {
         }),
       );
 
-    const moviesSection = containerEl.createDiv({ cls: "biblioteka-settings-section" });
+    const moviesSection = containerEl.createDiv({ cls: "biblioteka-settings-group" });
     moviesSection.createEl("h3", { text: "Movies" });
     moviesSection.createEl("p", {
       text: "Settings for movies and TV series.",
@@ -407,6 +407,7 @@ class BibliotekaSettingTab extends PluginSettingTab {
 
 
 
+    moviesSection.createEl("h4", { text: "Folders", cls: "biblioteka-settings-subheading" });
     new Setting(moviesSection)
       .setName("Movies folder")
       .setDesc("Destination folder for movie and TV series notes. Default: Media/Movies.")
@@ -421,6 +422,7 @@ class BibliotekaSettingTab extends PluginSettingTab {
         new FolderSuggest(this.app, text.inputEl);
       });
 
+    moviesSection.createEl("h4", { text: "File name", cls: "biblioteka-settings-subheading" });
     new Setting(moviesSection)
       .setName("File name format")
       .setDesc("Available variables: {{title}} and {{year}}. Default: {{title}} {{year}}.")
@@ -434,7 +436,7 @@ class BibliotekaSettingTab extends PluginSettingTab {
           }),
       );
 
-    moviesSection.createEl("h4", { text: "API sources" });
+    moviesSection.createEl("h4", { text: "API sources", cls: "biblioteka-settings-subheading" });
     moviesSection.createEl("p", {
       text: "Choose search sources and drag them to set the order used for search and metadata priority.",
       cls: "biblioteka-muted",
@@ -501,7 +503,7 @@ class BibliotekaSettingTab extends PluginSettingTab {
     renderProviderRows();
 
     const fieldsSection = moviesSection.createEl("details", { cls: "biblioteka-settings-disclosure biblioteka-fields-disclosure" });
-    fieldsSection.createEl("summary", { text: "Field settings" });
+    fieldsSection.createEl("summary", { text: "Metadata fields" });
     const fieldsContent = fieldsSection.createDiv({ cls: "biblioteka-settings-section-content" });
     fieldsContent.createEl("p", {
       text: "Choose which movie metadata fields to process and the property name used in note frontmatter.",
