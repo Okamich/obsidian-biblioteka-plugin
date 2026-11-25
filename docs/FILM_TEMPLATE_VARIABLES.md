@@ -156,7 +156,7 @@ type MovieRelation = {
 ### Money semantics
 
 - TMDB `budget` and `revenue` are documented in USD. Normalize them with `currency: "USD"`.
-- Kinopoisk `BUDGET` supplies the budget. For `revenue`, accept only the `WORLD` box-office item. Do not substitute `USA`, `RUSSIA` or another regional total.
+- Kinopoisk raw `BoxOffice.type` values are strings. The published OpenAPI schema does **not** declare an enum for this field; its schema example is `BUDGET`. A published response example shows the wire values `BUDGET`, `MARKETING`, `USA` and `WORLD`. Match the raw API values `BUDGET` for budget and `WORLD` for worldwide revenue. Do not compare raw payloads against wrapper enum identifiers such as `USA_BOX`, `RUS_BOX` or `WORLD_BOX`: those are not documented wire values. The current Swagger does not establish a Russian box-office wire value, so do not guess one or use it for worldwide revenue.
 - Amount `0` means missing for both fields, not a valid zero-dollar amount. Continue to the next eligible provider.
 - OMDb `BoxOffice` is a US box-office figure and must not populate worldwide `revenue`.
 - Do not convert currencies. If a Kinopoisk currency code is absent or unusable, omit that money value rather than guessing from a symbol.
@@ -186,6 +186,7 @@ Rules:
 - When arguments are present, return only requested countries with real records. Missing countries are omitted individually.
 - TMDB release type mapping: `1=premiere`, `2=theatrical_limited`, `3=theatrical`, `4=digital`, `5=physical`, `6=tv`. Unknown future values map to `other`, preserving the original value in diagnostics if useful.
 - Preserve multiple dates/types for a country. Do not silently choose a single date.
+- Preserve source date precision: emit `YYYY-MM-DD` when day is known, `YYYY-MM` when only month is known, and `YYYY` when only year is known. Never invent a month or day.
 - Kinopoisk distributions are mapped only when the response contains a real country and date. Do not infer a country from a release label.
 - The unscoped OMDb date has no country or release type; omit those properties.
 
@@ -201,7 +202,9 @@ Rules:
 
 ## 4. Collection limits, ordering and deduplication
 
-Limits apply after normalization and deduplication. Preserve the order returned by each provider; do not invent a popularity sort unless the endpoint itself defines the order.
+Multi-provider collections use **concatenation, not first-non-empty fallback**: append each provider's normalized items in configured provider order, deduplicate, then apply the collection cap. Preserve each provider's internal order; do not invent a popularity sort unless the endpoint itself defines the order. This applies to `awards`, `videos`, `similar`, `relations` and `recommendations`. `facts` currently has Kinopoisk as its only source. `ratings` continues to merge score entries from all providers as the existing base resolver does.
+
+When a merged collection exceeds its cap, retain at least one item from every provider that contributed items, then fill remaining slots in configured provider order. This prevents a full first-provider page (for example, 50 Kinopoisk awards) from silently discarding the only OMDb summary item. The final array never exceeds the cap.
 
 | Collection | Maximum returned |
 |---|---:|
@@ -217,7 +220,7 @@ Limits apply after normalization and deduplication. Preserve the order returned 
 - For paginated Kinopoisk endpoints, fetch only as many pages as needed to reach the cap, then stop. Do not fetch the remaining pages.
 - TMDB similar/recommendation endpoints return paginated results; use page 1 only for this MVP, then cap the normalized list at 20.
 - Deduplicate movie references by strongest available identity in this order: TMDB ID, IMDb ID, Kinopoisk ID, then normalized title + year. Keep the first occurrence according to configured provider order.
-- Deduplicate relations by movie identity. If the same movie appears in both Kinopoisk relations and sequels/prequels, retain one relation and prefer the more specific relation type. Do not emit duplicate movie references merely because two endpoints returned them.
+- Deduplicate relations by movie identity. If the same movie appears in both Kinopoisk `/relations` and `/sequels_and_prequels`, retain one relation and prefer the more specific relation type. Priority is `SEQUEL` / `PREQUEL` / `REMAKE` > other explicit relation types > `SIMILAR` > `UNKNOWN`. Do not emit duplicate movie references merely because two endpoints returned them.
 - Deduplicate awards/videos/facts only when a stable provider ID exists; otherwise preserve distinct provider entries rather than guessing equivalence.
 
 ## 5. Provider capability map
@@ -242,6 +245,8 @@ Base URL: `https://kinopoiskapiunofficial.tech`
 | Reviews | `GET /api/v2.2/films/{id}/reviews` |
 
 The current adapter implements details, staff and search only. Other methods are documented API capabilities, not implemented Biblioteka methods.
+
+**Kinopoisk wire-value note:** Swagger defines `BoxOffice.type` as a plain string (not an enum). The schema's example is `BUDGET`; the documented sample payload contains `BUDGET`, `MARKETING`, `USA`, `WORLD`. Therefore the collector matches `BUDGET` and `WORLD` exactly for the two supported money semantics. Wrapper enum names such as `USA_BOX` / `RUS_BOX` / `WORLD_BOX` must not be assumed to be raw API values. For relations, Swagger lists `SEQUEL`, `PREQUEL`, `REMAKE`, `UNKNOWN` for the sequels/prequels endpoint; the relations endpoint additionally lists `SIMILAR`, `VERSION`, `SPOOFS`, `SPOOFED`, `SPIN_OFF`, `SPUN_OFF_FROM`, `REFERENCES`, `REFERENCES_IN`, `EDITED_FROM`, `EDITED_INTO`, `ALTERNATE_LANGUAGE`.
 
 ### TMDB
 
@@ -300,7 +305,8 @@ type FilmTemplateVariable =
 ## 7. Missing values and diagnostics
 
 - Missing scalar used as the entire YAML property: omit the whole property.
-- Missing scalar inside a composed string: remove only the missing token, normalize adjacent whitespace, and remove empty paired wrappers such as `()` or `[]`. Keep the other text. Example: `"{{title}} ({{year}})"` becomes `"Film title"` if year is missing.
+- Missing scalar inside a composed string: remove only the missing token, normalize adjacent whitespace, and remove empty paired wrappers such as `()` or `[]`. Keep the other text. Example: `title: {{title}} ({{year}})` becomes `title: Film title` if year is missing.
+- In Markdown, if removing a missing placeholder leaves a line containing only a label (bold or plain), its label separator (`:`) and punctuation/whitespace, remove the entire line or list item. For example, `**Budget:** {{budget}}` disappears when budget is missing; it must not leave a dangling `**Budget:**`.
 - Missing array/object used as the entire YAML property: omit that property.
 - Missing item inside an array: omit only that item.
 - Missing requested country: omit only that country's records.
@@ -320,7 +326,8 @@ The renderer receives typed values; it must not stringify arrays/objects prematu
 - Arrays and objects are serialized as valid YAML collections.
 - Multiline strings use a valid YAML block scalar. The renderer owns indentation and escaping.
 - If the complete value is missing, omit the entire property.
-- For a composed YAML scalar containing literal text plus placeholders, render it as one safely quoted string; remove missing tokens and empty paired wrappers as described above.
+- For a composed YAML scalar containing literal text plus placeholders, write the template without manually adding YAML quotes (for example `title: {{title}} ({{year}})`). The renderer produces one safely quoted string after substitution; remove missing tokens and empty paired wrappers as described above.
+- In a composed YAML scalar, arrays use the same inline form as Markdown prose: items joined by comma + space. Objects use the same concise inline summary as Markdown prose; `Money` becomes `<amount> <currency>`. The resulting composed value is one quoted YAML string, not a nested YAML array/object.
 
 ### Markdown body
 
@@ -328,6 +335,7 @@ The renderer receives typed values; it must not stringify arrays/objects prematu
 - An array in an inline sentence is joined with comma + space, preserving array order. An array occupying a standalone block is rendered as a Markdown bullet list.
 - An object in inline text is rendered as a concise human-readable summary. For `Money`, use `<amount> <currency>` (for example `63000000 USD`). For other objects, use a stable `key: value` summary; never emit JavaScript's `[object Object]`.
 - An array/object occupying a standalone block is rendered as a readable Markdown list with only available fields.
+- After missing-value substitution, remove a Markdown line/list item if only its label, label separator and punctuation remain. A line such as `**Budget:** {{budget}}` is removed entirely when `budget` is missing.
 - No property access syntax such as `{{budget.amount}}` and no user-defined loops are part of this MVP.
 
 ## 9. Templater order and failure behavior
@@ -335,9 +343,9 @@ The renderer receives typed values; it must not stringify arrays/objects prematu
 1. Biblioteka parses and resolves its own variables.
 2. Biblioteka renders valid YAML and Markdown.
 3. If Templater is enabled and available, Templater processes the rendered note.
-4. If Templater is unavailable or its integration fails, Biblioteka warns and follows the agreed safe fallback; ordinary non-Templater note creation must remain available.
+4. Templater runs against a temporary in-memory/file copy of the fully Biblioteka-rendered note. Biblioteka commits the Templater result only after the entire Templater pass succeeds. If Templater throws, is unavailable, or fails partway through, discard all partial Templater mutations, keep the untouched Biblioteka-rendered note, show a warning, and continue note creation with that version. Never leave a partially Templater-processed note.
 
-Templater is optional. Do not require users to call internal Biblioteka functions for standard variables.
+Templater is optional. Do not require users to call internal Biblioteka functions for standard variables. A Templater failure must not roll back or corrupt the successfully rendered Biblioteka note.
 
 ## 10. Non-goals
 
