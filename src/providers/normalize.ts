@@ -64,14 +64,14 @@ export function normalizeOMDb(details: OMDbDetails): MovieRecord {
   const record = createEmptyMovieRecord(details.Type === "series" ? "Сериал" : "Фильм");
   record.title = clean(details.Title);
   // OMDb Title is not guaranteed to be the original title; do not populate originalTitle from it.
-  record.year = Number(details.Year.match(/\\d{4}/)?.[0] ?? 0) || null;
+  record.year = Number(details.Year.match(/\d{4}/)?.[0] ?? 0) || null;
   record.genres = split(details.Genre);
   record.countries = split(details.Country);
   record.plot = clean(details.Plot);
   record.director = split(details.Director);
   record.writer = split(details.Writer);
   record.actors = split(details.Actors);
-  record.duration = Number(details.Runtime?.match(/\\d+/)?.[0] ?? 0) || null;
+  record.duration = Number(details.Runtime?.match(/\d+/)?.[0] ?? 0) || null;
   record.poster = clean(details.Poster);
   if (record.poster) record.posterCandidates.push({ source: "omdb", url: record.poster });
   record.ratings.push(...rating("IMDb", parseRating(details.imdbRating), parseVotes(details.imdbVotes),
@@ -115,7 +115,7 @@ export function normalizeTMDB(details: TMDBMovieDetails, provider: TMDBProvider)
 
 function parseRating(value?: string): number | undefined {
   if (!value || value === "N/A") return undefined;
-  const match = value.match(/\\d+(?:\\.\\d+)?/);
+  const match = value.match(/\d+(?:\.\d+)?/);
   return match ? Number(match[0]) : undefined;
 }
 
