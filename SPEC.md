@@ -248,7 +248,7 @@ All movie providers must normalize their responses into one shared `MovieRecord`
 | `duration` | Runtime in minutes |
 | `studio` | Production studio/company string array |
 | `actors` | Main cast string array |
-| `ratings` | Collection of source, value, vote count (when available), and URL |
+| `ratings` | Collection of source, value, scale, vote count (when available), and URL |
 | `watched` | `Просмотрен`, `Собираюсь посмотреть`, or empty |
 | `lastWatched` | User-entered date |
 | `personalRating` | User-entered numeric rating |
@@ -260,7 +260,7 @@ All movie providers must normalize their responses into one shared `MovieRecord`
 1. Query providers sequentially in the configured order.
 2. For every ordinary metadata field, the first non-empty value wins.
 3. A later provider fills only missing fields; it never replaces populated fields.
-4. Ratings are collected from all matched providers. When the same rating source appears twice, keep the first value and supplement missing vote count/URL from later responses.
+4. Ratings are collected from all matched providers. Preserve each source's scale (for example, 10-point, 100-point or percentage). When the same rating source appears twice, keep the first value and supplement missing scale, vote count or URL from later responses.
 5. Collect poster candidates from matched providers. The first available poster is the default, but the user can choose another candidate in Preview.
 6. Store source IDs as explicit provider-to-ID pairs. An IMDb external ID discovered through TMDB is not treated as proof that OMDb has already supplied a record.
 7. Personal fields (`watched`, `lastWatched`, `personalRating`, `personalReview`) are user-owned and must never be overwritten by provider refreshes.
