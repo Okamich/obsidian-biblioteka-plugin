@@ -26,7 +26,16 @@ interface KinopoiskSearchResponse {
   searchFilmsCountResult?: number;
 }
 
-export interface KinopoiskStaffItem {\n  staffId: number;\n  nameRu?: string;\n  nameEn?: string;\n  description?: string;\n  professionKey?: string;\n  professionText?: string;\n}\n\nexport interface KinopoiskDetails {
+export interface KinopoiskStaffItem {
+  staffId: number;
+  nameRu?: string;
+  nameEn?: string;
+  description?: string;
+  professionKey?: string;
+  professionText?: string;
+}
+
+export interface KinopoiskDetails {
   kinopoiskId: number;
   imdbId?: string;
   nameRu?: string;
@@ -49,6 +58,7 @@ export interface KinopoiskStaffItem {\n  staffId: number;\n  nameRu?: string;\n 
   webUrl?: string;
   countries?: Array<{ country?: string }>;
   genres?: Array<{ genre?: string }>;
+  productionCompanies?: Array<{ name?: string }>;
 }
 
 export class KinopoiskProvider {
@@ -88,6 +98,22 @@ export class KinopoiskProvider {
     }
 
     return response.json as KinopoiskDetails;
+  }
+
+  async getStaff(filmId: number): Promise<KinopoiskStaffItem[]> {
+    if (!Number.isInteger(filmId) || filmId <= 0) throw new Error("Invalid Kinopoisk film ID.");
+    const url = new URL("/api/v1/staff", API_BASE);
+    url.searchParams.set("filmId", String(filmId));
+    const response = await requestUrl({
+      url: url.toString(),
+      method: "GET",
+      headers: this.headers,
+      throw: false,
+    });
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(`Kinopoisk staff API returned HTTP ${response.status}`);
+    }
+    return response.json as KinopoiskStaffItem[];
   }
 
   async search(
