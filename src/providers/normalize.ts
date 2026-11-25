@@ -56,7 +56,8 @@ export function normalizeKinopoisk(
   record.ratings.push(...rating("Kinopoisk", details.ratingKinopoisk, details.ratingKinopoiskVoteCount, details.webUrl));
   record.ratings.push(...rating("IMDb", details.ratingImdb, details.ratingImdbVoteCount,
     details.imdbId ? `https://www.imdb.com/title/${details.imdbId}/` : undefined));
-  if (details.kinopoiskId > 0) record.sourceIds.kinopoisk = String(details.kinopoiskId);\n  if (details.imdbId) record.externalIds.imdb = details.imdbId;
+  if (details.kinopoiskId > 0) record.sourceIds.kinopoisk = String(details.kinopoiskId);
+  if (details.imdbId) record.externalIds.imdb = details.imdbId;
   return record;
 }
 
