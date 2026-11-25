@@ -55,7 +55,7 @@ export default class BibliotekaPlugin extends Plugin {
       id: "add-media",
       name: "Add media",
       callback: () => {
-        if (!getEnabledProviderIds(this.settings).some((id) => this.settings[id === "kinopoisk" ? "kinopoiskApiKey" : "omdbApiKey"].trim())) {
+        if (!getEnabledProviderIds(this.settings).some((id) => getProviderApiKey(this.settings, id))) {
           new Notice("Enable at least one provider and add its API key in Biblioteka settings.");
           return;
         }
@@ -453,7 +453,7 @@ class FolderSuggest extends AbstractInputSuggest<string> {
 }
 
 interface UnifiedSearchResult {
-  source: "kinopoisk" | "omdb";
+  source: MovieProviderId;
   id: string;
   title: string;
   year: number;
@@ -461,7 +461,7 @@ interface UnifiedSearchResult {
   posterUrl: string;
   rating?: string | number;
   kinopoiskItem?: KinopoiskSearchItem;
-  omdbItem?: OMDbSearchItem;
+  omdbItem?: OMDbSearchItem;\n  tmdbItem?: TMDBSearchItem;
 }
 
 class MediaSearchModal extends Modal {
@@ -552,7 +552,7 @@ class MediaSearchModal extends Modal {
               rating: item.rating,
               kinopoiskItem: item,
             });
-          } else {
+          } else if (providerId === "omdb") {
             const key = this.plugin.settings.omdbApiKey.trim();
             if (!key) { failures.push("OMDb: API key missing"); continue; }
             const omdbType = kind === "movie" ? "movie" : kind === "series" ? "series" : undefined;
@@ -573,9 +573,27 @@ class MediaSearchModal extends Modal {
                 omdbItem: item,
               });
             }
+          } else {
+            if (kind === "series") continue;
+            const key = this.plugin.settings.tmdbApiKey.trim();
+            if (!key) { failures.push("TMDB: API key missing"); continue; }
+            const response = await new TMDBProvider(key).search(query);
+            for (const item of response.results ?? []) {
+              if (this.plugin.settings.sfwFilter && isExplicitAdultContent({ filmId: 0, nameRu: item.title })) continue;
+              items.push({
+                source: "tmdb",
+                id: String(item.id),
+                title: item.title || item.original_title || "Untitled",
+                year: Number(item.release_date?.slice(0, 4) ?? 0),
+                type: "Movie",
+                posterUrl: new TMDBProvider(key).posterUrl(item.poster_path),
+                rating: item.vote_average,
+                tmdbItem: item,
+              });
+            }
           }
         } catch (error) {
-          failures.push(`${providerId === "kinopoisk" ? "Kinopoisk" : "OMDb"}: ${getErrorMessage(error)}`);
+          failures.push(`${providerId === "kinopoisk" ? "Kinopoisk" : providerId === "omdb" ? "OMDb" : "TMDB"}: ${getErrorMessage(error)}`);
         }
       }
 
@@ -627,7 +645,7 @@ class MediaSearchModal extends Modal {
       item.year ? String(item.year) : "",
       item.type,
       item.rating ? `★ ${item.rating}` : "",
-      item.source === "kinopoisk" ? "Kinopoisk" : "OMDb",
+      item.source === "kinopoisk" ? "Kinopoisk" : item.source === "omdb" ? "OMDb" : "TMDB",
     ].filter(Boolean);
     info.createEl("div", {
       text: details.join(" · ") || "Details unavailable",
