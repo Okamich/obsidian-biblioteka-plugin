@@ -2,11 +2,16 @@ import {
   createEmptyMovieRecord,
   MovieRecord,
   MovieRating,
+  MovieField,
   mergeMovieRecord,
 } from "../models/movie";
 import { KinopoiskProvider, KinopoiskDetails } from "./kinopoisk";
 import { OMDbProvider, OMDbDetails } from "./omdb";
 import { TMDBProvider, TMDBMovieDetails } from "./tmdb";
+
+function fieldEnabled(fields: MovieField[] | undefined, field: MovieField): boolean {
+  return !fields || fields.includes(field);
+}
 
 export interface KinopoiskStaffItem {
   staffId: number;
@@ -48,20 +53,21 @@ function parseRatingDetails(value: string): { value: number; scale?: string } | 
 export function normalizeKinopoisk(
   details: KinopoiskDetails,
   staff: KinopoiskStaffItem[] = [],
+  enabledFields?: MovieField[],
 ): MovieRecord {
   const kpType = (details.type ?? "").toUpperCase();
   const record = createEmptyMovieRecord(kpType === "TV_SHOW" ? "ТВ-шоу" : kpType.includes("TV") || kpType.includes("SERIES") ? "Сериал" : "Фильм");
-  record.title = clean(details.nameRu) || clean(details.nameEn) || clean(details.nameOriginal);
-  record.originalTitle = clean(details.nameOriginal);
-  record.year = details.year ?? null;
-  record.genres = unique((details.genres ?? []).map((item) => item.genre));
-  record.countries = unique((details.countries ?? []).map((item) => item.country));
-  record.plot = clean(details.description) || clean(details.shortDescription);
-  record.duration = details.filmLength ?? null;
-  record.studio = unique((details.productionCompanies ?? []).map((item) => item.name));
-  record.director = unique(staff.filter((item) => item.professionKey === "DIRECTOR").map((item) => item.nameRu || item.nameEn));
-  record.writer = unique(staff.filter((item) => item.professionKey === "WRITER").map((item) => item.nameRu || item.nameEn));
-  record.actors = unique(staff.filter((item) => item.professionKey === "ACTOR").slice(0, 10).map((item) => item.nameRu || item.nameEn));
+  if (fieldEnabled(enabledFields, "title")) record.title = clean(details.nameRu) || clean(details.nameEn) || clean(details.nameOriginal);
+  if (fieldEnabled(enabledFields, "originalTitle")) record.originalTitle = clean(details.nameOriginal);
+  if (fieldEnabled(enabledFields, "year")) record.year = details.year ?? null;
+  if (fieldEnabled(enabledFields, "genres")) record.genres = unique((details.genres ?? []).map((item) => item.genre));
+  if (fieldEnabled(enabledFields, "countries")) record.countries = unique((details.countries ?? []).map((item) => item.country));
+  if (fieldEnabled(enabledFields, "plot")) record.plot = clean(details.description) || clean(details.shortDescription);
+  if (fieldEnabled(enabledFields, "duration")) record.duration = details.filmLength ?? null;
+  if (fieldEnabled(enabledFields, "studio")) record.studio = unique((details.productionCompanies ?? []).map((item) => item.name));
+  if (fieldEnabled(enabledFields, "director")) record.director = unique(staff.filter((item) => item.professionKey === "DIRECTOR").map((item) => item.nameRu || item.nameEn));
+  if (fieldEnabled(enabledFields, "writer")) record.writer = unique(staff.filter((item) => item.professionKey === "WRITER").map((item) => item.nameRu || item.nameEn));
+  if (fieldEnabled(enabledFields, "actors")) record.actors = unique(staff.filter((item) => item.professionKey === "ACTOR").slice(0, 10).map((item) => item.nameRu || item.nameEn));
   record.poster = clean(details.posterUrl);
   if (record.poster) record.posterCandidates.push({ source: "kinopoisk", url: record.poster });
   record.ratings.push(...rating("Kinopoisk", details.ratingKinopoisk, details.ratingKinopoiskVoteCount, details.webUrl));
@@ -72,18 +78,18 @@ export function normalizeKinopoisk(
   return record;
 }
 
-export function normalizeOMDb(details: OMDbDetails): MovieRecord {
+export function normalizeOMDb(details: OMDbDetails, enabledFields?: MovieField[]): MovieRecord {
   const record = createEmptyMovieRecord(details.Type === "series" ? "Сериал" : "Фильм");
-  record.title = clean(details.Title);
+  if (fieldEnabled(enabledFields, "title")) record.title = clean(details.Title);
   // OMDb Title is not guaranteed to be the original title; do not populate originalTitle from it.
   record.year = Number(details.Year.match(/\d{4}/)?.[0] ?? 0) || null;
-  record.genres = split(details.Genre);
-  record.countries = split(details.Country);
-  record.studio = split(details.Production);
-  record.plot = clean(details.Plot);
-  record.director = split(details.Director);
-  record.writer = split(details.Writer);
-  record.actors = split(details.Actors);
+  if (fieldEnabled(enabledFields, "genres")) record.genres = split(details.Genre);
+  if (fieldEnabled(enabledFields, "countries")) record.countries = split(details.Country);
+  if (fieldEnabled(enabledFields, "studio")) record.studio = split(details.Production);
+  if (fieldEnabled(enabledFields, "plot")) record.plot = clean(details.Plot);
+  if (fieldEnabled(enabledFields, "director")) record.director = split(details.Director);
+  if (fieldEnabled(enabledFields, "writer")) record.writer = split(details.Writer);
+  if (fieldEnabled(enabledFields, "actors")) record.actors = split(details.Actors);
   record.duration = Number(details.Runtime?.match(/\d+/)?.[0] ?? 0) || null;
   record.poster = clean(details.Poster);
   if (record.poster) record.posterCandidates.push({ source: "omdb", url: record.poster });
@@ -100,19 +106,19 @@ export function normalizeOMDb(details: OMDbDetails): MovieRecord {
   return record;
 }
 
-export function normalizeTMDB(details: TMDBMovieDetails, provider: TMDBProvider): MovieRecord {
+export function normalizeTMDB(details: TMDBMovieDetails, provider: TMDBProvider, enabledFields?: MovieField[]): MovieRecord {
   const record = createEmptyMovieRecord("Фильм");
-  record.title = clean(details.title);
-  record.originalTitle = clean(details.original_title);
-  record.year = Number(details.release_date?.slice(0, 4) ?? 0) || null;
-  record.genres = unique((details.genres ?? []).map((item) => item.name));
-  record.countries = unique((details.production_countries ?? []).map((item) => item.name));
-  record.plot = clean(details.overview);
-  record.duration = details.runtime ?? null;
-  record.studio = unique((details.production_companies ?? []).map((item) => item.name));
-  record.director = unique((details.credits?.crew ?? []).filter((item) => item.job === "Director").map((item) => item.name));
-  record.writer = unique((details.credits?.crew ?? []).filter((item) => /writer|screenplay|story/i.test(item.job)).map((item) => item.name));
-  record.actors = unique((details.credits?.cast ?? []).sort((a, b) => a.order - b.order).slice(0, 10).map((item) => item.name));
+  if (fieldEnabled(enabledFields, "title")) record.title = clean(details.title);
+  if (fieldEnabled(enabledFields, "originalTitle")) record.originalTitle = clean(details.original_title);
+  if (fieldEnabled(enabledFields, "year")) record.year = Number(details.release_date?.slice(0, 4) ?? 0) || null;
+  if (fieldEnabled(enabledFields, "genres")) record.genres = unique((details.genres ?? []).map((item) => item.name));
+  if (fieldEnabled(enabledFields, "countries")) record.countries = unique((details.production_countries ?? []).map((item) => item.name));
+  if (fieldEnabled(enabledFields, "plot")) record.plot = clean(details.overview);
+  if (fieldEnabled(enabledFields, "duration")) record.duration = details.runtime ?? null;
+  if (fieldEnabled(enabledFields, "studio")) record.studio = unique((details.production_companies ?? []).map((item) => item.name));
+  if (fieldEnabled(enabledFields, "director")) record.director = unique((details.credits?.crew ?? []).filter((item) => item.job === "Director").map((item) => item.name));
+  if (fieldEnabled(enabledFields, "writer")) record.writer = unique((details.credits?.crew ?? []).filter((item) => /writer|screenplay|story/i.test(item.job)).map((item) => item.name));
+  if (fieldEnabled(enabledFields, "actors")) record.actors = unique((details.credits?.cast ?? []).sort((a, b) => a.order - b.order).slice(0, 10).map((item) => item.name));
   record.poster = provider.posterUrl(details.poster_path);
   if (record.poster) record.posterCandidates.push({ source: "tmdb", url: record.poster });
   if ((details.vote_count ?? 0) > 0) record.ratings.push(...rating("TMDB", details.vote_average, details.vote_count,
@@ -140,19 +146,22 @@ function parseVotes(value?: string): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-export async function fetchKinopoiskRecord(provider: KinopoiskProvider, id: number): Promise<MovieRecord> {
+export async function fetchKinopoiskRecord(provider: KinopoiskProvider, id: number, enabledFields?: MovieField[]): Promise<MovieRecord> {
   const details = await provider.getDetails(id);
   let staff: KinopoiskStaffItem[] = [];
-  try { staff = await provider.getStaff(id); } catch { /* Staff is supplemental; retain the core record. */ }
-  return normalizeKinopoisk(details, staff);
+  const needsStaff = ["director", "writer", "actors"].some((field) => fieldEnabled(enabledFields, field as MovieField));
+  if (needsStaff) {
+    try { staff = await provider.getStaff(id); } catch { /* Staff is supplemental; retain the core record. */ }
+  }
+  return normalizeKinopoisk(details, staff, enabledFields);
 }
 
-export async function fetchOMDbRecord(provider: OMDbProvider, id: string): Promise<MovieRecord> {
-  return normalizeOMDb(await provider.getDetails(id));
+export async function fetchOMDbRecord(provider: OMDbProvider, id: string, enabledFields?: MovieField[]): Promise<MovieRecord> {
+  return normalizeOMDb(await provider.getDetails(id), enabledFields);
 }
 
-export async function fetchTMDBRecord(provider: TMDBProvider, id: number): Promise<MovieRecord> {
-  return normalizeTMDB(await provider.getDetails(id), provider);
+export async function fetchTMDBRecord(provider: TMDBProvider, id: number, enabledFields?: MovieField[]): Promise<MovieRecord> {
+  return normalizeTMDB(await provider.getDetails(id), provider, enabledFields);
 }
 
 export function mergeProviderRecord(target: MovieRecord, incoming: MovieRecord, provider: "kinopoisk" | "omdb" | "tmdb"): MovieRecord {
