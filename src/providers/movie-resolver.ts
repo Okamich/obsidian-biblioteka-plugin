@@ -75,7 +75,7 @@ async function loadTMDB(
   record: MovieRecord,
 ): Promise<MovieRecord | undefined> {
   if (selection.source === "tmdb") return fetchTMDBRecord(provider, Number(selection.id));
-  const imdbId = record.externalIds.imdb;
+  const imdbId = selection.source === "omdb" ? selection.id : record.externalIds.imdb;
   if (imdbId) {
     const found = await provider.findByExternalId(imdbId);
     const matches = found.movie_results ?? [];
