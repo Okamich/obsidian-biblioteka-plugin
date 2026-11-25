@@ -18,11 +18,12 @@ export interface KinopoiskStaffItem {
 }
 
 function clean(value?: string | null): string {
-  return value && value !== "N/A" ? value.trim() : "";
+  const normalized = value?.trim() ?? "";
+  return normalized.toUpperCase() === "N/A" ? "" : normalized;
 }
 
 function split(value?: string): string[] {
-  return [...new Set((value ?? "").split(",").map((part) => part.trim()).filter(Boolean))];
+  return [...new Set((value ?? "").split(",").map(clean).filter(Boolean))];
 }
 
 function unique(values: Array<string | undefined>): string[] {
