@@ -120,15 +120,13 @@ The final YAML schema for ratings will be settled during implementation.
 
 ## 9. Poster Manager
 
-Selection modes:
+Current MVP behavior:
 
-- `priority` — first available poster according to provider priority.
-- `best_quality` — highest-quality verifiable candidate.
-- `ask` — ask before replacing an existing poster.
+- Collect poster candidates from all successfully matched providers.
+- Default to the first available poster according to provider priority.
+- Allow the user to choose another available poster in Preview; show dimensions/language when the provider supplies them.
 
-Default: `best_quality`.
-
-Compare actual image dimensions when possible, aspect ratio, availability and format. Do not download every candidate into the Vault. If quality cannot be verified, do not claim that it is known.
+Automatic cross-provider quality ranking is deferred until image dimensions can be compared reliably for all relevant candidates. Do not download every candidate into the Vault or claim quality is known when it cannot be verified.
 
 Additional rules:
 
