@@ -17,6 +17,9 @@ import {
   MediaKind,
 } from "./providers/kinopoisk";
 import { OMDbProvider, OMDbDetails, OMDbSearchItem } from "./providers/omdb";
+import { TMDBProvider, TMDBSearchItem } from "./providers/tmdb";
+import { MovieRecord, MovieProviderId } from "./models/movie";
+import { resolveMovieRecord } from "./providers/movie-resolver";
 
 interface BibliotekaSettings {
   defaultMediaFolder: string;
@@ -137,7 +140,7 @@ export default class BibliotekaPlugin extends Plugin {
     };
     const savedOrder = Array.isArray(saved?.providerOrder) ? saved.providerOrder : [];
     this.settings.providerOrder = [
-      ...savedOrder.filter((id: string) => id === "kinopoisk" || id === "omdb"),
+      ...savedOrder.filter((id: string) => id === "kinopoisk" || id === "omdb" || id === "tmdb"),
       ...DEFAULT_SETTINGS.providerOrder.filter((id) => !savedOrder.includes(id)),
     ];
   }
