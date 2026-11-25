@@ -56,7 +56,7 @@ export function normalizeKinopoisk(
   record.ratings.push(...rating("Kinopoisk", details.ratingKinopoisk, details.ratingKinopoiskVoteCount, details.webUrl));
   record.ratings.push(...rating("IMDb", details.ratingImdb, details.ratingImdbVoteCount,
     details.imdbId ? `https://www.imdb.com/title/${details.imdbId}/` : undefined));
-  if (details.kinopoiskId > 0) record.sourceIds.kinopoisk = String(details.kinopoiskId);
+  if (details.kinopoiskId > 0) record.sourceIds.kinopoisk = String(details.kinopoiskId);\n  if (details.imdbId) record.externalIds.imdb = details.imdbId;
   return record;
 }
 
@@ -81,7 +81,7 @@ export function normalizeOMDb(details: OMDbDetails): MovieRecord {
     const value = parseRating(item.Value);
     if (value != null) record.ratings.push({ source: item.Source, value });
   }
-  if (details.imdbID) record.sourceIds.omdb = details.imdbID;
+  if (details.imdbID) { record.sourceIds.omdb = details.imdbID; record.externalIds.imdb = details.imdbID; }
   return record;
 }
 
@@ -102,7 +102,7 @@ export function normalizeTMDB(details: TMDBMovieDetails, provider: TMDBProvider)
   if (record.poster) record.posterCandidates.push({ source: "tmdb", url: record.poster });
   record.ratings.push(...rating("TMDB", details.vote_average, details.vote_count,
     `https://www.themoviedb.org/movie/${details.id}`));
-  if (details.external_ids?.imdb_id) record.sourceIds.omdb = details.external_ids.imdb_id;
+  if (details.external_ids?.imdb_id) record.externalIds.imdb = details.external_ids.imdb_id;
   record.sourceIds.tmdb = String(details.id);
   for (const poster of details.images?.posters ?? []) {
     const url = provider.posterUrl(poster.file_path);
