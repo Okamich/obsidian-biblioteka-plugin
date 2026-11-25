@@ -16,6 +16,7 @@ export type MovieField =
 export interface MovieRating {
   source: string;
   value: number;
+  scale?: string;
   votes?: number;
   url?: string;
 }
@@ -129,6 +130,7 @@ export function mergeMovieRecord(
     );
     if (!existing) target.ratings.push(rating);
     else {
+      if (!existing.scale && rating.scale) existing.scale = rating.scale;
       if (existing.votes == null && rating.votes != null) existing.votes = rating.votes;
       if (!existing.url && rating.url) existing.url = rating.url;
     }
