@@ -37,6 +37,7 @@ export interface OMDbDetails {
   Plot?: string;
   Language?: string;
   Country?: string;
+  Production?: string;
   Awards?: string;
   Poster?: string;
   Ratings?: OMDbRating[];
