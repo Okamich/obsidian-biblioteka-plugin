@@ -961,6 +961,88 @@ class MediaSearchModal extends Modal {
 }
 
 
+async function updateExistingMovieNote(
+  app: App,
+  file: TFile,
+  record: MovieRecord,
+  fields: Record<string, HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
+  posterUrl: string,
+): Promise<void> {
+  const read = (key: string): string => fields[key]?.value.trim() ?? "";
+  const sourceIds = { ...record.sourceIds };
+  const tags = splitList(read("tags"));
+  if (!tags.includes("Biblioteka")) tags.push("Biblioteka");
+  const candidate: Record<string, unknown> = {
+    type: record.type,
+    title: read("title"),
+    originalTitle: read("originalTitle"),
+    year: Number(read("year")) || undefined,
+    genres: splitList(read("genres")),
+    countries: splitList(read("countries")),
+    plot: read("plot"),
+    director: splitList(read("director")),
+    writer: splitList(read("writer")),
+    duration: read("duration") === "" ? undefined : Number(read("duration")),
+    studio: splitList(read("studio")),
+    actors: splitList(read("actors")),
+    watched: read("watched"),
+    lastWatched: read("lastWatched"),
+    personalRating: read("personalRating") === "" ? undefined : Number(read("personalRating")),
+    personalReview: read("personalReview"),
+    tags,
+    source_ids: sourceIds,
+    sources: Object.keys(sourceIds),
+    ...(posterUrl ? { poster: posterUrl } : {}),
+  };
+
+  await app.fileManager.processFrontMatter(file, (fm) => {
+    const existingIds = (fm.source_ids && typeof fm.source_ids === "object") ? fm.source_ids as Record<string, string> : {};
+    fm.source_ids = { ...sourceIds, ...existingIds };
+    const existingSources = Array.isArray(fm.sources) ? fm.sources as string[] : [];
+    fm.sources = [...new Set([...existingSources, ...Object.keys(sourceIds)])];
+    for (const [key, value] of Object.entries(candidate)) {
+      if (key === "source_ids" || key === "sources" || key === "tags" || value === undefined || value === null || value === "") continue;
+      if (Array.isArray(value) && value.length === 0) continue;
+      const current = fm[key];
+      if (current === undefined || current === null || current === "") fm[key] = value;
+    }
+    const existingTags = Array.isArray(fm.tags) ? fm.tags as string[] : [];
+    if (!existingTags.includes("Biblioteka")) fm.tags = [...existingTags, "Biblioteka"];
+    if (record.ratings.length) fm.ratings = record.ratings;
+  });
+
+  const current = await app.vault.read(file);
+  let next = current;
+  const start = "<!-- biblioteka:ratings:start -->";
+  const end = "<!-- biblioteka:ratings:end -->";
+  if (record.ratings.length) {
+    const block = [start, "## Ratings", "", renderRatingsTable(record.ratings), end].join("\n");
+    const startIndex = next.indexOf(start);
+    const endIndex = next.indexOf(end);
+    if (startIndex >= 0 && endIndex > startIndex) next = next.slice(0, startIndex) + block + next.slice(endIndex + end.length);
+    else next = `${next.trimEnd()}\n\n${block}\n`;
+  }
+  const plot = read("plot");
+  if (plot) {
+    const body = next.replace(/^---\n[\s\S]*?\n---\n?/, "").trim();
+    const withoutManaged = body
+      .replace(/^# .*$/m, "")
+      .replace(/!\[\[[^\]]+\]\]/g, "")
+      .replace(/<!-- biblioteka:ratings:start -->[\s\S]*?<!-- biblioteka:ratings:end -->/g, "")
+      .trim();
+    if (!withoutManaged) {
+      const heading = `# ${read("title")}\n`;
+      const headingIndex = next.indexOf(heading);
+      if (headingIndex >= 0) {
+        const insertAt = headingIndex + heading.length;
+        next = `${next.slice(0, insertAt)}\n${plot}\n${next.slice(insertAt)}`;
+      } else next = `${next.trimEnd()}\n\n${plot}\n`;
+    }
+  }
+  if (next !== current) await app.vault.modify(file, next);
+}
+
+
 
 
 function getEnabledProviderIds(settings: BibliotekaSettings): Array<"kinopoisk" | "omdb"> {
