@@ -55,6 +55,12 @@ export class TMDBProvider {
     return this.request("/search/movie", { query: query.trim(), include_adult: "false" });
   }
 
+  async findByExternalId(externalId: string): Promise<{ movie_results?: TMDBSearchItem[] }> {
+    const id = externalId.trim();
+    if (!/^tt\\d+$/.test(id)) throw new Error("A valid IMDb ID is required for TMDB lookup.");
+    return this.request(`/find/${encodeURIComponent(id)}`, { external_source: "imdb_id" });
+  }
+
   async getDetails(id: number): Promise<TMDBMovieDetails> {
     if (!Number.isInteger(id) || id <= 0) throw new Error("Invalid TMDB movie ID.");
     return this.request(`/movie/${id}`, {
