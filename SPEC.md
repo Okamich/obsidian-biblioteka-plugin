@@ -3,7 +3,7 @@
 **Product:** Biblioteka  
 **Tagline:** Media Library for Obsidian  
 **Plugin ID:** `obsidian-biblioteka-plugin`  
-**Version:** 0.9  
+**Version:** 1.0  
 **Status:** Draft — MVP
 
 ## 1. Product
@@ -17,9 +17,9 @@ The MVP focuses on **cinema**: movies and TV series.
 ## 2. MVP providers
 
 1. **Kinopoisk Unofficial API** — primary provider and default search priority.
-2. **OMDb API** — secondary provider and additional metadata/ratings source.
+2. **OMDb API** — secondary provider and additional metadata/ratings source.\n3. **TMDB API** — additional metadata, credits, posters and ratings source.
 
-Provider priority is configurable. The architecture must allow additional providers without rewriting the core.
+Default provider order: Kinopoisk → OMDb → TMDB. Provider priority is configurable by drag-and-drop. The architecture must allow additional providers without rewriting the core.
 
 ## 3. Confirmed product decisions
 
@@ -221,3 +221,52 @@ The MVP must allow the user to:
 4. How should unknown or incomplete metadata be handled without hiding ordinary cinema unnecessarily?
 
 **Acceptance direction:** The toggle remains simple. The implementation should be conservative: target explicit adult productions, preserve ordinary 18+ cinema, and clearly document that metadata-based filtering cannot guarantee complete detection.
+
+
+## 17. Shared movie data model (v1.0)
+
+All movie providers must normalize their responses into one shared `MovieRecord`. Provider-specific response shapes must not leak into the UI or note writer.
+
+### Metadata fields
+
+| Property | Meaning |
+|---|---|
+| `type` | Programmatically assigned media type: `Фильм` for movies |
+| `sources` | Human-readable list of providers that supplied data |
+| `source_ids` | Mapping of provider name to that provider's own ID (for example, `kinopoisk: "301"`) |
+| `title` | Localized/display title |
+| `originalTitle` | Original title |
+| `year` | Release year |
+| `genres` | String array |
+| `countries` | Production country string array |
+| `poster` | Selected local poster path |
+| `plot` | Synopsis |
+| `director` | Director string array |
+| `writer` | Writer string array |
+| `duration` | Runtime in minutes |
+| `studio` | Production studio/company string array |
+| `actors` | Main cast string array |
+| `ratings` | Collection of source, value, vote count (when available), and URL |
+| `watched` | `Просмотрен`, `Собираюсь посмотреть`, or empty |
+| `lastWatched` | User-entered date |
+| `personalRating` | User-entered numeric rating |
+| `personalReview` | User-authored review/comment |
+| `tags` | Includes the service tag `Biblioteka` |
+
+### Resolution rules
+
+1. Query providers sequentially in the configured order.
+2. For every ordinary metadata field, the first non-empty value wins.
+3. A later provider fills only missing fields; it never replaces populated fields.
+4. Ratings are collected from all matched providers. When the same rating source appears twice, keep the first value and supplement missing vote count/URL from later responses.
+5. Collect poster candidates from matched providers. The first available poster is the default, but the user can choose another candidate in Preview.
+6. Store source IDs as explicit provider-to-ID pairs. An IMDb external ID discovered through TMDB is not treated as proof that OMDb has already supplied a record.
+7. Personal fields (`watched`, `lastWatched`, `personalRating`, `personalReview`) are user-owned and must never be overwritten by provider refreshes.
+8. `tags` includes `Biblioteka`; existing user tags must be preserved when enriching an existing note.
+
+### Provider limitations
+
+- OMDb's `Title` is not guaranteed to be an original title; do not copy it into `originalTitle`.
+- TMDB movie search/details are implemented for movies. TMDB series support is separate work.
+- Kinopoisk staff/credits are supplemental requests; failure to load staff must not discard the core movie metadata.
+- Cross-provider matching must prefer external IDs. Title/year fallback is allowed only for a unique, unambiguous match.
