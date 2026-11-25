@@ -17,7 +17,8 @@ The MVP focuses on **cinema**: movies and TV series.
 ## 2. MVP providers
 
 1. **Kinopoisk Unofficial API** — primary provider and default search priority.
-2. **OMDb API** — secondary provider and additional metadata/ratings source.\n3. **TMDB API** — additional metadata, credits, posters and ratings source.
+2. **OMDb API** — secondary provider and additional metadata/ratings source.
+3. **TMDB API** — additional metadata, credits, posters and ratings source.
 
 Default provider order: Kinopoisk → OMDb → TMDB. Provider priority is configurable by drag-and-drop. The architecture must allow additional providers without rewriting the core.
 
@@ -52,14 +53,14 @@ Default provider order: Kinopoisk → OMDb → TMDB. Provider priority is config
 3. Search enabled providers according to priority.
 4. User selects a result.
 5. Retrieve full details from the selected provider.
-6. Search other providers for matching records.
-7. Match by external IDs where possible; otherwise use title, year and media type.
+6. Resolve the same object through enabled providers in configured priority order.
+7. Match by external IDs where possible; otherwise use exact normalized title, year and media type.
 8. Do not merge ambiguous matches automatically.
-9. Resolve ordinary fields using provider priority, filling only missing values.
-10. Collect ratings independently from all enabled providers.
-11. Select a poster using Poster Manager.
+9. Normalize each provider response into the shared Movie model.
+10. Fill only fields that are still empty; never replace a value supplied by an earlier provider.
+11. Collect ratings and poster candidates independently from all successfully matched providers.
 12. Check for possible duplicates.
-13. Show an editable preview with field provenance.
+13. Show an editable preview with field provenance and poster choice.
 14. Create a Markdown note after user confirmation.
 
 Failure of one provider must not discard data already collected from another provider.
@@ -97,7 +98,8 @@ All network requests should use Obsidian's `requestUrl()` API. API keys must nev
 
 ## 7. Field resolution and provenance
 
-- First valid value according to configured provider priority wins.
+- First valid value according to configured provider priority wins, field by field.
+- A later provider may only fill a field that is still empty.
 - Existing Vault values are not overwritten automatically.
 - Empty values are ignored.
 - `0` and `false` are valid.
