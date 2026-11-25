@@ -306,7 +306,7 @@ type FilmTemplateVariable =
 - Missing requested country: omit only that country's records.
 - Optional endpoint failure: record a diagnostic and continue with other providers.
 - Unknown or misspelled variable: leave the original token visible and report a template warning. Variable names are case-sensitive.
-- Literal token syntax: prefix the opening braces with a backslash, e.g. `\\{{title}}`, to output the literal text `{{title}}`.
+- Literal token syntax: prefix the opening braces with a backslash, e.g. `\{{title}}`, to output the literal text `{{title}}`.
 
 ## 8. Rendering contract
 
