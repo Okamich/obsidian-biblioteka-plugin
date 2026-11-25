@@ -68,6 +68,7 @@ export function normalizeOMDb(details: OMDbDetails): MovieRecord {
   record.year = Number(details.Year.match(/\d{4}/)?.[0] ?? 0) || null;
   record.genres = split(details.Genre);
   record.countries = split(details.Country);
+  record.studio = split(details.Production);
   record.plot = clean(details.Plot);
   record.director = split(details.Director);
   record.writer = split(details.Writer);
