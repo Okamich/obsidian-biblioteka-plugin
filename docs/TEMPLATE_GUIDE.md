@@ -65,6 +65,7 @@ That means a title containing quotation marks will not break your frontmatter. D
 - A scalar inside a sentence becomes readable text.
 - An array inside a sentence becomes comma-separated text.
 - An array on its own line becomes a bullet list.
+- If a missing value leaves only a label and punctuation on a line, the whole line is removed.
 - An object inside a sentence becomes a short readable summary. For example, `{{budget}}` becomes `63000000 USD`.
 - An object on its own line becomes a readable list of its available fields.
 - There is no loop syntax or nested property syntax such as `{{budget.amount}}` in this MVP.
@@ -189,6 +190,8 @@ tagline: {{tagline}}
 
 This requests budget, revenue and tagline. It does not request awards, videos, facts, similar movies or unrelated details. If several requested values share one API response, Biblioteka reuses that response.
 
+For collection variables such as `awards`, `videos`, `similar`, `relations` and `recommendations`, available items from providers are combined in configured provider order, duplicates are removed, and the final cap is applied. This is a merge, not a first-provider-wins choice.
+
 ### Money
 
 - `{{budget}}` is the production budget.
@@ -210,7 +213,7 @@ You can also write `{{released}}` without arguments to request all available rel
 
 Country codes can be ISO alpha-2 or alpha-3 where recognized, such as `US` / `USA`. Biblioteka normalizes them internally.
 
-Only countries with actual matching records appear. If one country has no date, that country is skipped while the others remain. If a country has multiple release types or dates, multiple entries may appear.
+Only countries with actual matching records appear. If one country has no date, that country is skipped while the others remain. If a country has multiple release types or dates, multiple entries may appear. Dates retain the precision supplied by the source: `YYYY-MM-DD`, `YYYY-MM` or `YYYY`; missing month/day values are never invented.
 
 OMDb's release date has no country attached. It can be used only by unscoped `{{released}}`; it is not silently treated as a US date.
 
@@ -221,6 +224,7 @@ TMDB release types are represented as:
 - `digital`
 - `physical`
 - `tv`
+- `other` (unknown/future source type)
 
 ## 7. Ratings: score vs age certification
 
@@ -237,10 +241,11 @@ If a value is unavailable:
 - a whole YAML property containing only that value is omitted;
 - a missing array item is skipped;
 - a missing placeholder inside a sentence is removed, while the rest of the sentence stays;
+- a Markdown line that is left with only a label and punctuation is removed. For example, `**Budget:** {{budget}}` disappears entirely when budget is missing;
 - empty paired wrappers such as `()` are removed after a missing value;
 - no fake `N/A`, `unknown` or empty list item is added.
 
-For example, `title: "{{title}} ({{year}})"` becomes `title: "Example Film"` if the year is unavailable.
+For example, `title: {{title}} ({{year}})` becomes `title: "Example Film"` if the year is unavailable. Do not add your own YAML quotes around placeholders; the renderer quotes the completed value.
 
 If you mistype a variable, Biblioteka leaves the unknown token visible and shows a warning. Variable names are case-sensitive: `{{title}}` works; `{{Title}}` is unknown.
 
@@ -253,7 +258,7 @@ Templater is optional. Processing order is:
 1. Biblioteka resolves its own variables and renders the note.
 2. If Templater is enabled and available, it processes the rendered note.
 
-If Templater is not installed, is disabled, or becomes unavailable, Biblioteka warns and ordinary note creation remains available. The built-in template and regular custom Markdown templates do not require Templater.
+If Templater is not installed, is disabled, or becomes unavailable, Biblioteka warns and ordinary note creation remains available. If Templater starts but fails partway through, Biblioteka discards all partial Templater changes and keeps the untouched note already rendered by Biblioteka. The note is created from that version, never from a partially processed result. The built-in template and regular custom Markdown templates do not require Templater.
 
 ## 10. Current scope
 
