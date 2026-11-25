@@ -190,7 +190,7 @@ tagline: {{tagline}}
 
 This requests budget, revenue and tagline. It does not request awards, videos, facts, similar movies or unrelated details. If several requested values share one API response, Biblioteka reuses that response.
 
-For collection variables such as `awards`, `videos`, `similar`, `relations` and `recommendations`, available items from providers are combined in configured provider order, duplicates are removed, and the final cap is applied. This is a merge, not a first-provider-wins choice.
+For collection variables such as `awards`, `videos` and `similar`, available items from providers are combined in configured provider order, duplicates are removed, and the final cap is applied. This is a merge, not a first-provider-wins choice. `relations` and `recommendations` are currently single-source collections and are not cross-provider merged.
 
 ### Money
 
