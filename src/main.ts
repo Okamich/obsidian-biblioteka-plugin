@@ -400,12 +400,68 @@ class BibliotekaSettingTab extends PluginSettingTab {
 
     const moviesSection = containerEl.createDiv({ cls: "biblioteka-settings-section" });
     moviesSection.createEl("h3", { text: "Movies" });
-    moviesSection.createEl("p", {
+    containerEl.createEl("p", {
+      text: "Choose search sources and drag them to set the order used for search and metadata priority.",
+      cls: "biblioteka-muted",
+    });
+
+    containerEl.createEl("p", {
       text: "Settings for movies and TV series.",
       cls: "biblioteka-muted",
     });
 
 
+
+    new Setting(moviesSection)
+      .setName("Movies folder")
+      .setDesc("Destination folder for movie and TV series notes. Default: Media/Movies.")
+      .addText((text) => {
+        text
+          .setPlaceholder("Media/Movies")
+          .setValue(this.plugin.settings.moviesFolder)
+          .onChange(async (value) => {
+            this.plugin.settings.moviesFolder = value.trim() || "Media/Movies";
+            await this.plugin.saveSettings();
+          });
+        new FolderSuggest(this.app, text.inputEl);
+      });
+
+    new Setting(moviesSection)
+      .setName("File name format")
+      .setDesc("Available variables: {{title}} and {{year}}. Default: {{title}} {{year}}.")
+      .addText((text) =>
+        text
+          .setPlaceholder("{{title}} {{year}}")
+          .setValue(this.plugin.settings.movieFileNameTemplate)
+          .onChange(async (value) => {
+            this.plugin.settings.movieFileNameTemplate = value.trim() || "{{title}} {{year}}";
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    moviesSection.createEl("h4", { text: "API sources" });
+    moviesSection.createEl("p", {
+      text: "Choose search sources and drag them to set the order used for search and metadata priority.",
+      cls: "biblioteka-muted",
+    });
+    const providerRows = containerEl.createDiv({ cls: "biblioteka-provider-list" });
+    const renderProviderRows = (): void => {
+      providerRows.empty();
+      for (const providerId of this.plugin.settings.providerOrder) {
+        const label = providerId === "kinopoisk" ? "Kinopoisk" : providerId === "omdb" ? "OMDb" : "TMDB";
+        const enabled = this.plugin.settings.enabledProviders[providerId];
+        const row = providerRows.createDiv({ cls: "biblioteka-provider-row" });
+        row.draggable = true;
+        const handle = row.createSpan({ text: "☰", cls: "biblioteka-provider-handle" });
+        handle.setAttribute("aria-label", "Drag to reorder");
+        row.createSpan({ text: label, cls: "biblioteka-provider-name" });
+        const toggle = row.createEl("input", { attr: { type: "checkbox" } });
+        toggle.checked = enabled;
+        toggle.setAttribute("aria-label", `Enable ${label}`);
+        toggle.addEventListener("change", async () => {
+          this.plugin.settings.enabledProviders[providerId] = toggle.checked;
+          await this.plugin.saveSettings();
+          renderProviderRows();
         });
         const up = row.createEl("button", { text: "↑", cls: "biblioteka-provider-move" });
         up.setAttribute("aria-label", `Move ${label} up`);
@@ -448,61 +504,6 @@ class BibliotekaSettingTab extends PluginSettingTab {
       renderProviderRows();
     };
     renderProviderRows();
-    containerEl.createEl("p", {
-      text: "Settings for movies and TV series.",
-      cls: "biblioteka-muted",
-    });
-
-    new Setting(moviesSection)
-      .setName("Movies folder")
-      .setDesc("Destination folder for movie and TV series notes. Default: Media/Movies.")
-      .addText((text) => {
-        text
-          .setPlaceholder("Media/Movies")
-          .setValue(this.plugin.settings.moviesFolder)
-          .onChange(async (value) => {
-            this.plugin.settings.moviesFolder = value.trim() || "Media/Movies";
-            await this.plugin.saveSettings();
-          });
-        new FolderSuggest(this.app, text.inputEl);
-      });
-
-    new Setting(moviesSection)
-      .setName("File name format")
-      .setDesc("Available variables: {{title}} and {{year}}. Default: {{title}} {{year}}.")
-      .addText((text) =>
-        text
-          .setPlaceholder("{{title}} {{year}}")
-          .setValue(this.plugin.settings.movieFileNameTemplate)
-          .onChange(async (value) => {
-            this.plugin.settings.movieFileNameTemplate = value.trim() || "{{title}} {{year}}";
-            await this.plugin.saveSettings();
-          }),
-      );
-
-    moviesSection.createEl("h4", { text: "API sources" });
-    moviesSection.createEl("p", {
-      text: "Choose search sources and drag them to set the order used for search and metadata priority.",
-      cls: "biblioteka-muted",
-    });
-    const providerRows = moviesSection.createDiv({ cls: "biblioteka-provider-list" });
-    const renderProviderRows = (): void => {
-      providerRows.empty();
-      for (const providerId of this.plugin.settings.providerOrder) {
-        const label = providerId === "kinopoisk" ? "Kinopoisk" : providerId === "omdb" ? "OMDb" : "TMDB";
-        const enabled = this.plugin.settings.enabledProviders[providerId];
-        const row = providerRows.createDiv({ cls: "biblioteka-provider-row" });
-        row.draggable = true;
-        const handle = row.createSpan({ text: "☰", cls: "biblioteka-provider-handle" });
-        handle.setAttribute("aria-label", "Drag to reorder");
-        row.createSpan({ text: label, cls: "biblioteka-provider-name" });
-        const toggle = row.createEl("input", { attr: { type: "checkbox" } });
-        toggle.checked = enabled;
-        toggle.setAttribute("aria-label", `Enable ${label}`);
-        toggle.addEventListener("change", async () => {
-          this.plugin.settings.enabledProviders[providerId] = toggle.checked;
-          await this.plugin.saveSettings();
-          renderProviderRows();
 
     const fieldsSection = moviesSection.createEl("details", { cls: "biblioteka-settings-disclosure biblioteka-fields-disclosure" });
     fieldsSection.createEl("summary", { text: "Field settings" });
