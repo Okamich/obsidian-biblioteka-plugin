@@ -1014,7 +1014,7 @@ async function updateExistingMovieNote(
     const existingIds = (fm.source_ids && typeof fm.source_ids === "object") ? fm.source_ids as Record<string, string> : {};
     fm.source_ids = { ...sourceIds, ...existingIds };
     const existingSources = Array.isArray(fm.sources) ? fm.sources as string[] : [];
-    fm.sources = [...new Set([...existingSources, ...Object.keys(sourceIds)])];
+    fm.sources = [...new Set([...existingSources, ...Object.keys(sourceIds).map((id) => getProviderDisplayName(id as MovieProviderId))])];
     for (const [key, value] of Object.entries(candidate)) {
       if (key === "source_ids" || key === "sources" || key === "tags" || value === undefined || value === null || value === "") continue;
       if (Array.isArray(value) && value.length === 0) continue;
