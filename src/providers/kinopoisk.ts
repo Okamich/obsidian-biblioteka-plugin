@@ -26,7 +26,7 @@ interface KinopoiskSearchResponse {
   searchFilmsCountResult?: number;
 }
 
-export interface KinopoiskDetails {
+export interface KinopoiskStaffItem {\n  staffId: number;\n  nameRu?: string;\n  nameEn?: string;\n  description?: string;\n  professionKey?: string;\n  professionText?: string;\n}\n\nexport interface KinopoiskDetails {
   kinopoiskId: number;
   imdbId?: string;
   nameRu?: string;
