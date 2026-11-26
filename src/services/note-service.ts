@@ -145,7 +145,7 @@ export async function createMovieNote(
   if (!tags.includes("Biblioteka")) tags.push("Biblioteka");
   const ratings = record.ratings;
 
-  const folder = options.moviesFolder.trim().replace(/^\\/+|\\/+$/g, "") || "Media/Movies";
+  const folder = options.moviesFolder.trim().replace(/^\/+|\/+$/g, "") || "Media/Movies";
   await ensureVaultFolder(app, folder);
 
   let localPosterPath = "";
@@ -207,14 +207,14 @@ export async function createMovieNote(
   const frontmatter = Object.entries(properties)
     .filter(([, value]) => value !== undefined && value !== null && value !== "")
     .map(([key, value]) => `${yamlPropertyKey(key)}: ${yamlValue(value)}`)
-    .join("\\n");
+    .join("\n");
   const body = [
     `# ${title}`,
     localPosterPath ? `![[${localPosterPath}]]` : "",
     read("plot"),
-    ratings.length ? ["", "<!-- biblioteka:ratings:start -->", "## Ratings", "", renderRatingsTable(ratings), "<!-- biblioteka:ratings:end -->"].join("\\n") : "",
-  ].filter(Boolean).join("\\n\\n");
-  const content = `---\\n${frontmatter}\\n---\\n\\n${body.trim()}\\n`;
+    ratings.length ? ["", "<!-- biblioteka:ratings:start -->", "## Ratings", "", renderRatingsTable(ratings), "<!-- biblioteka:ratings:end -->"].join("\n") : "",
+  ].filter(Boolean).join("\n\n");
+  const content = `---\n${frontmatter}\n---\n\n${body.trim()}\n`;
 
   const fileName = renderFileNameTemplate(options.fileNameTemplate, title, read("year"));
   const identity = sourceIds.kinopoisk || sourceIds.omdb || sourceIds.tmdb || "untitled";
@@ -251,25 +251,25 @@ async function ensureVaultFolder(app: App, folderPath: string): Promise<void> {
 
 function renderFileNameTemplate(template: string, title: string, year: string): string {
   return template
-    .replace(/\\{\\{\\s*title\\s*\\}\\}/gi, title)
-    .replace(/\\{\\{\\s*year\\s*\\}\\}/gi, year)
-    .replace(/\\{\\{[^{}]+\\}\\}/g, "")
-    .replace(/\\s+/g, " ")
+    .replace(/\{\{\s*title\s*\}\}/gi, title)
+    .replace(/\{\{\s*year\s*\}\}/gi, year)
+    .replace(/\{\{[^{}]+\}\}/g, "")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
 function sanitizeFileName(value: string): string {
   return value
-    .replace(/[\\/:*?"<>|#^\\[\\]\\\\]/g, "")
+    .replace(/[\/:*?"<>|#^\[\]\\]/g, "")
     .replace(/[. ]+$/g, "")
-    .replace(/\\s+/g, " ")
+    .replace(/\s+/g, " ")
     .slice(0, 100);
 }
 
 function getImageExtension(url: string): string {
   try {
     const pathname = new URL(url).pathname.toLowerCase();
-    const match = pathname.match(/\\.(jpe?g|png|webp|gif)$/);
+    const match = pathname.match(/\.(jpe?g|png|webp|gif)$/);
     if (match) return match[1] === "jpeg" ? "jpg" : match[1];
   } catch {
     // Fall back to a broadly supported image format.
