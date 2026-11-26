@@ -1,11 +1,11 @@
-import { AbstractInputSuggest, App, Notice, PluginSettingTab, Setting, SettingGroup, TFolder } from "obsidian";
+import { AbstractInputSuggest, App, Notice, Plugin, PluginSettingTab, Setting, SettingGroup, TFolder } from "obsidian";
 import { KinopoiskProvider } from "../providers/kinopoisk";
 import { OMDbProvider } from "../providers/omdb";
 import { TMDBProvider } from "../providers/tmdb";
 import { MovieField, MovieProviderId } from "../models/movie";
 import { BibliotekaSettings, DEFAULT_SETTINGS, MOVIE_FIELD_DEFAULTS, MOVIE_FIELD_LABELS, MOVIE_FIELD_ORDER } from "../settings";
 
-export interface SettingsPlugin {
+export interface SettingsPlugin extends Plugin {
   settings: BibliotekaSettings;
   saveSettings(): Promise<void>;
 }
