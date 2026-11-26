@@ -25,7 +25,7 @@ export async function findDuplicateNotes(
   const typeKey = normalizeMediaType(mediaType);
   const matches: DuplicateMatch[] = [];
   const files = app.vault.getMarkdownFiles().filter((file) =>
-    file.path.startsWith(`${folder.path}/`),
+    file.path.startsWith(folder.path + "/"),
   );
 
   for (const file of files) {
@@ -48,20 +48,20 @@ export async function findDuplicateNotes(
         : source === "omdb" ? "OMDb"
           : source === "tmdb" ? "TMDB"
             : source;
-      matches.push({ file, reason: `Same ${label} ID: ${id}` });
+      matches.push({ file, reason: "Same " + label + " ID: " + id });
       continue;
     }
 
     const noteContent = await app.vault.cachedRead(file);
-    const headingTitle = noteContent.match(/^#\\s+(.+)$/m)?.[1];
-    const fallbackTitle = headingTitle || file.basename.replace(/\\s+\\d{4}$/, "");
+    const headingTitle = noteContent.match(/^#\s+(.+)$/m)?.[1];
+    const fallbackTitle = headingTitle || file.basename.replace(/\s+\d{4}$/, "");
     const existingTitle = normalizeDuplicateTitle(String(frontmatter[titleProperty] ?? fallbackTitle));
     const existingYear = Number(frontmatter[yearProperty]);
     const existingType = normalizeMediaType(String(frontmatter.type ?? ""));
 
     if (titleKey && existingTitle === titleKey && year > 0 && existingYear === year
       && typeKey !== "" && existingType === typeKey) {
-      matches.push({ file, reason: `Matching title, year (${year}) and media type.` });
+      matches.push({ file, reason: "Matching title, year (" + year + ") and media type." });
     }
   }
   return matches;
@@ -72,9 +72,9 @@ function normalizeDuplicateTitle(value: string): string {
     .normalize("NFKC")
     .toLocaleLowerCase()
     .replace(/[’‘']/g, "")
-    .replace(/[^\\p{L}\\p{N}]+/gu, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim()
-    .replace(/\\s+/g, " ");
+    .replace(/\s+/g, " ");
 }
 
 export function normalizeMediaType(value: string): string {
