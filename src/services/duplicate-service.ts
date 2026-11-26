@@ -1,5 +1,4 @@
-import { App, TFile } from "obsidian";
-import { MovieProviderId } from "../models/movie";
+import { App, TFile, TFolder } from "obsidian";
 
 export interface DuplicateMatch {
   file: TFile;
@@ -8,34 +7,47 @@ export interface DuplicateMatch {
 
 export async function findDuplicateNotes(
   app: App,
-  sourceIds: Partial<Record<MovieProviderId, string>>,
+  folderPath: string,
+  sourceIds: Record<string, string>,
   title: string,
   year: number,
   mediaType: string,
   titleProperty = "title",
   yearProperty = "year",
 ): Promise<DuplicateMatch[]> {
+  const normalizedFolderPath = folderPath.trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+  if (!normalizedFolderPath) return [];
+
+  const folder = app.vault.getAbstractFileByPath(normalizedFolderPath);
+  if (!(folder instanceof TFolder)) return [];
+
   const titleKey = normalizeDuplicateTitle(title);
   const typeKey = normalizeMediaType(mediaType);
   const matches: DuplicateMatch[] = [];
+  const files: TFile[] = [];
+  collectMarkdownFiles(folder, files);
 
-  for (const file of app.vault.getMarkdownFiles()) {
+  for (const file of files) {
     const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter;
     if (!frontmatter) continue;
 
     const existingIds = (frontmatter.source_ids && typeof frontmatter.source_ids === "object")
-      ? frontmatter.source_ids as Record<string, string>
+      ? frontmatter.source_ids as Record<string, unknown>
       : {};
     const legacyIds: Record<string, string> = {
       ...(frontmatter.kinopoisk_id ? { kinopoisk: String(frontmatter.kinopoisk_id) } : {}),
       ...(frontmatter.imdb_id ? { omdb: String(frontmatter.imdb_id) } : {}),
     };
     const allExistingIds = { ...legacyIds, ...existingIds };
-    const matchedSource = (Object.keys(sourceIds) as MovieProviderId[])
-      .find((source) => sourceIds[source] && allExistingIds[source] === sourceIds[source]);
+    const matchedSource = Object.entries(sourceIds)
+      .find(([source, id]) => Boolean(source && id) && String(allExistingIds[source] ?? "") === String(id));
     if (matchedSource) {
-      const label = matchedSource === "kinopoisk" ? "Kinopoisk" : matchedSource === "omdb" ? "OMDb" : "TMDB";
-      matches.push({ file, reason: `Same ${label} ID: ${sourceIds[matchedSource]}` });
+      const [source, id] = matchedSource;
+      const label = source === "kinopoisk" ? "Kinopoisk"
+        : source === "omdb" ? "OMDb"
+          : source === "tmdb" ? "TMDB"
+            : source;
+      matches.push({ file, reason: "Same " + label + " ID: " + id });
       continue;
     }
 
@@ -48,7 +60,7 @@ export async function findDuplicateNotes(
 
     if (titleKey && existingTitle === titleKey && year > 0 && existingYear === year
       && typeKey !== "" && existingType === typeKey) {
-      matches.push({ file, reason: `Matching title, year (${year}) and media type.` });
+      matches.push({ file, reason: "Matching title, year (" + year + ") and media type." });
     }
   }
   return matches;
@@ -70,4 +82,15 @@ export function normalizeMediaType(value: string): string {
   if (/series|сериал/.test(normalized)) return "series";
   if (/tv show/.test(normalized)) return "tv show";
   return normalized;
+}
+
+
+function collectMarkdownFiles(folder: TFolder, files: TFile[]): void {
+  for (const child of folder.children) {
+    if (child instanceof TFolder) {
+      collectMarkdownFiles(child, files);
+    } else if (child instanceof TFile && child.extension.toLocaleLowerCase() === "md") {
+      files.push(child);
+    }
+  }
 }

@@ -958,6 +958,7 @@ class MediaSearchModal extends Modal {
       if (!skipDuplicateCheck) {
         const duplicates = await findDuplicateNotes(
           this.app,
+          this.plugin.settings.moviesFolder,
           sourceIds,
           title,
           year,
