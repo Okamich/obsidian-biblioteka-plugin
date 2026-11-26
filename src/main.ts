@@ -22,7 +22,7 @@ import { resolveMovieRecord } from "./providers/movie-resolver";
 import { DuplicateWarningModal } from "./ui/duplicate-warning-modal";
 import { findDuplicateNotes, normalizeMediaType } from "./services/duplicate-service";
 import { renderRatingsTable } from "./services/ratings-renderer";
-import { createMovieNote, updateExistingMovieNote } from "./services/note-service";
+import { createMovieNote, updateExistingMovieNote } from "./services/movie-note-service";
 
 type MovieFieldSetting = { enabled: boolean; property: string };
 
