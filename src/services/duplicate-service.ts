@@ -24,9 +24,8 @@ export async function findDuplicateNotes(
   const titleKey = normalizeDuplicateTitle(title);
   const typeKey = normalizeMediaType(mediaType);
   const matches: DuplicateMatch[] = [];
-  const files = app.vault.getMarkdownFiles().filter((file) =>
-    file.path.startsWith(folder.path + "/"),
-  );
+  const files: TFile[] = [];
+  collectMarkdownFiles(folder, files);
 
   for (const file of files) {
     const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter;
@@ -83,4 +82,15 @@ export function normalizeMediaType(value: string): string {
   if (/series|сериал/.test(normalized)) return "series";
   if (/tv show/.test(normalized)) return "tv show";
   return normalized;
+}
+
+
+function collectMarkdownFiles(folder: TFolder, files: TFile[]): void {
+  for (const child of folder.children) {
+    if (child instanceof TFolder) {
+      collectMarkdownFiles(child, files);
+    } else if (child instanceof TFile && child.extension.toLocaleLowerCase() === "md") {
+      files.push(child);
+    }
+  }
 }
