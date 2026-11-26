@@ -1,15 +1,4 @@
-import {
-  AbstractInputSuggest,
-  App,
-  Modal,
-  Notice,
-  Plugin,
-  PluginSettingTab,
-  Setting,
-  SettingGroup,
-  TFile,
-  TFolder,
-} from "obsidian";
+import { Modal, Notice, Plugin, TFile } from "obsidian";
 import {
   KinopoiskProvider,
   KinopoiskSearchItem,
