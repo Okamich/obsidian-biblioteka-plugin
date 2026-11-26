@@ -26,7 +26,7 @@ interface UnifiedSearchResult {
   tmdbItem?: TMDBSearchItem;
 }
 
-class MediaSearchModal extends Modal {
+export class MediaSearchModal extends Modal {
   private readonly plugin: MediaSearchPlugin;
   private resultsEl: HTMLElement;
   private controlsEl: HTMLElement;
@@ -464,6 +464,16 @@ class MediaSearchModal extends Modal {
   }
 }
 
+
+function getProviderApiKey(settings: BibliotekaSettings, providerId: MovieProviderId): string {
+  if (providerId === "kinopoisk") return settings.kinopoiskApiKey.trim();
+  if (providerId === "omdb") return settings.omdbApiKey.trim();
+  return settings.tmdbApiKey.trim();
+}
+
+export function getEnabledProviderIds(settings: BibliotekaSettings): MovieProviderId[] {
+  return settings.providerOrder.filter((id) => settings.enabledProviders[id] && Boolean(getProviderApiKey(settings, id)));
+}
 
 function getMovieFieldProperty(settings: BibliotekaSettings, field: MovieField): string {
   return settings.movieFields[field]?.property.trim() || MOVIE_FIELD_DEFAULTS[field].property;
