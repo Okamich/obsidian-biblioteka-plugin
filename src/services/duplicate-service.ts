@@ -1,12 +1,12 @@
 import { App, TFile } from "obsidian";
 import { MovieProviderId } from "../models/movie";
 
-interface DuplicateMatch {
+export interface DuplicateMatch {
   file: TFile;
   reason: string;
 }
 
-async function findDuplicateNotes(
+export async function findDuplicateNotes(
   app: App,
   sourceIds: Partial<Record<MovieProviderId, string>>,
   title: string,
@@ -64,7 +64,7 @@ function normalizeDuplicateTitle(value: string): string {
     .replace(/\s+/g, " ");
 }
 
-function normalizeMediaType(value: string): string {
+export function normalizeMediaType(value: string): string {
   const normalized = value.trim().toLocaleLowerCase();
   if (/movie|film|фильм/.test(normalized)) return "movie";
   if (/series|сериал/.test(normalized)) return "series";
