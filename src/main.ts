@@ -979,7 +979,7 @@ class MediaSearchModal extends Modal {
             async (file) => {
               button.setText("Updating…");
               try {
-                await updateExistingMovieNote(this.app, file, record, fields, this.plugin.settings.movieFields);
+                await updateExistingMovieNote(this.app, file, record, Object.fromEntries(Object.entries(fields).map(([key, field]) => [key, field.value.trim()])), this.plugin.settings.movieFields);
                 new Notice(`Updated: ${file.path}`);
                 this.close();
               } catch (error) {
