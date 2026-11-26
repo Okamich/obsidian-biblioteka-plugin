@@ -1,7 +1,7 @@
 import { App, Notice, TFile } from "obsidian";
 import { MovieField, MovieRecord, MovieProviderId } from "../models/movie";
 import { renderRatingsTable } from "./ratings-renderer";
-import { createMarkdownFile, ensureVaultFolder, saveRemoteImage } from "./note-file-service";
+import { createMarkdownFile, saveRemoteImage } from "./note-file-service";
 
 type MovieFieldSetting = { enabled: boolean; property: string };
 
@@ -147,8 +147,6 @@ export async function createMovieNote(
   const ratings = record.ratings;
 
   const folder = options.moviesFolder.trim().replace(/^\/+|\/+$/g, "") || "Media/Movies";
-  await ensureVaultFolder(app, folder);
-
   let localPosterPath = "";
   if (posterUrl) {
     try {
