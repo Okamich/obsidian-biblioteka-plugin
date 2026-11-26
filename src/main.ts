@@ -22,6 +22,7 @@ import { MovieField, MovieRecord, MovieProviderId } from "./models/movie";
 import { resolveMovieRecord } from "./providers/movie-resolver";
 import { DuplicateWarningModal } from "./ui/duplicate-warning-modal";
 import { findDuplicateNotes, normalizeMediaType } from "./services/duplicate-service";
+import { renderRatingsTable } from "./services/ratings-renderer";
 
 type MovieFieldSetting = { enabled: boolean; property: string };
 
@@ -1212,40 +1213,6 @@ function getEnabledProviderIds(settings: BibliotekaSettings): MovieProviderId[] 
   return settings.providerOrder.filter((id) => settings.enabledProviders[id] && Boolean(getProviderApiKey(settings, id)));
 }
 
-interface MediaRating {
-  source: string;
-  value: number;
-  scale?: string;
-  votes?: number;
-  url?: string;
-}
-
-function renderRatingsTable(ratings: MediaRating[]): string {
-  const rows = ratings.map((rating) => {
-    const source = rating.url
-      ? `[${escapeMarkdownTable(rating.source)}](${rating.url})`
-      : escapeMarkdownTable(rating.source);
-    const votes = typeof rating.votes === "number"
-      ? rating.votes.toLocaleString("en-US")
-      : "—";
-    return `| ${source} | ${rating.value}${rating.scale ? `/${rating.scale}` : ""} | ${votes} |`;
-  });
-  return [
-    "| Source | Rating | Votes |",
-    "|---|---:|---:|",
-    ...rows,
-  ].join("\n");
-}
-
-function escapeMarkdownTable(value: string): string {
-  return value.replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
-}
-
-/**
- * Metadata-based SFW filter.
- * This targets erotic/adult productions and explicit sexual descriptions,
- * not ordinary age-restricted movies or incidental mature themes.
- */
 function isExplicitAdultContent(item: KinopoiskSearchItem): boolean {
   const genreNames = (item.genres ?? []).map((genre) =>
     typeof genre === "string" ? genre : genre.genre ?? "",
