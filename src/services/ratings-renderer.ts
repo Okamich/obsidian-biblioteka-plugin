@@ -1,6 +1,6 @@
 export interface MediaRating {
   source: string;
-  value: string;
+  value: number;
   scale?: string;
   votes?: number;
   url?: string;
