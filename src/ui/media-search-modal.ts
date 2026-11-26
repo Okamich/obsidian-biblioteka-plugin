@@ -27,14 +27,14 @@ interface UnifiedSearchResult {
 }
 
 class MediaSearchModal extends Modal {
-  private readonly plugin: BibliotekaPlugin;
+  private readonly plugin: MediaSearchPlugin;
   private resultsEl: HTMLElement;
   private controlsEl: HTMLElement;
   private queryInput: HTMLInputElement;
   private kindSelect: HTMLSelectElement;
   private searchButton: HTMLButtonElement;
 
-  constructor(app: App, plugin: BibliotekaPlugin) {
+  constructor(app: App, plugin: MediaSearchPlugin) {
     super(app);
     this.plugin = plugin;
   }
@@ -473,3 +473,62 @@ function getEnabledMovieFields(settings: BibliotekaSettings): MovieField[] {
   return MOVIE_FIELD_ORDER.filter((field) => settings.movieFields[field]?.enabled !== false);
 }
 
+/**
+ * Metadata-based SFW filter.
+ * This targets erotic/adult productions and explicit sexual descriptions,
+ * not ordinary age-restricted movies or incidental mature themes.
+ */
+function isExplicitAdultContent(item: KinopoiskSearchItem): boolean {
+  const genreNames = (item.genres ?? []).map((genre) =>
+    typeof genre === "string" ? genre : genre.genre ?? "",
+  );
+
+  const metadata = [
+    item.nameRu,
+    item.nameEn,
+    item.nameOriginal,
+    item.description,
+    ...genreNames,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .normalize("NFKC")
+    .toLocaleLowerCase();
+
+  // Kinopoisk does not consistently expose a dedicated "erotica" genre.
+  // Check titles, descriptions and any genre labels that are available.
+  const explicitTerms =
+    /(?:^|[^\p{L}\p{N}])(?:порно(?:граф\p{L}*)?|эротик\p{L}*|нимфоман\p{L}*|для\s+взрослых|xxx|хентай|hentai|porn(?:ography)?|erotic\p{L}*|nymphomaniac|nymphomania|sexploitation|softcore|hardcore|adult\s+(?:film|content))(?:$|[^\p{L}\p{N}])/iu;
+
+  const explicitPhrases =
+    /(?:откровенн\p{L}*\s+(?:сексуальн\p{L}*\s+)?сцен\p{L}*|сцен\p{L}*\s+(?:откровенного\s+)?секс\p{L}*|explicit\s+(?:sexual\s+)?content|graphic\s+sex(?:ual)?)/iu;
+
+  return explicitTerms.test(metadata) || explicitPhrases.test(metadata);
+}
+
+function matchesKind(item: KinopoiskSearchItem, kind: MediaKind): boolean {
+  if (kind === "all") return true;
+  const type = (item.type ?? "").toUpperCase();
+  const isSeries = type.includes("TV") || type.includes("SERIES");
+  return kind === "series" ? isSeries : !isSeries;
+}
+
+function formatMediaType(type?: string): string {
+  switch ((type ?? "").toUpperCase()) {
+    case "FILM":
+      return "Movie";
+    case "TV_SERIES":
+    case "MINI_SERIES":
+      return "TV series";
+    case "TV_SHOW":
+      return "TV show";
+    default:
+      return type ?? "";
+  }
+}
+
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return "An unexpected error occurred.";
+}
