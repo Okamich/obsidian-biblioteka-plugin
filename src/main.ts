@@ -9,7 +9,6 @@ import {
   SettingGroup,
   TFile,
   TFolder,
-  requestUrl,
 } from "obsidian";
 import {
   KinopoiskProvider,
@@ -20,6 +19,10 @@ import { OMDbProvider, OMDbSearchItem } from "./providers/omdb";
 import { TMDBProvider, TMDBSearchItem } from "./providers/tmdb";
 import { MovieField, MovieRecord, MovieProviderId } from "./models/movie";
 import { resolveMovieRecord } from "./providers/movie-resolver";
+import { DuplicateWarningModal } from "./ui/duplicate-warning-modal";
+import { findDuplicateNotes, normalizeMediaType } from "./services/duplicate-service";
+import { renderRatingsTable } from "./services/ratings-renderer";
+import { createMovieNote, updateExistingMovieNote } from "./services/movie-note-service";
 
 type MovieFieldSetting = { enabled: boolean; property: string };
 
@@ -935,8 +938,11 @@ class MediaSearchModal extends Modal {
     button: HTMLButtonElement,
     skipDuplicateCheck = false,
   ): Promise<void> {
-    const read = (key: string): string => fields[key]?.value.trim() ?? "";
-    const title = read("title");
+    const values: Record<string, string> = {};
+    for (const [key, field] of Object.entries(fields)) {
+      values[key] = field.value.trim();
+    }
+    const title = values.title ?? "";
     if (!title) {
       new Notice("A title is required to create a note.");
       fields.title?.focus();
@@ -946,13 +952,8 @@ class MediaSearchModal extends Modal {
     button.disabled = true;
     button.setText(skipDuplicateCheck ? "Creating…" : "Checking duplicates…");
     try {
-      const year = Number(read("year")) || 0;
-      const genres = splitList(read("genres"));
-      const countries = splitList(read("countries"));
+      const year = Number(values.year) || 0;
       const sourceIds = { ...record.sourceIds };
-      const tags = splitList(read("tags"));
-      if (!tags.includes("Biblioteka")) tags.push("Biblioteka");
-      const ratings = record.ratings;
 
       if (!skipDuplicateCheck) {
         const duplicates = await findDuplicateNotes(
@@ -975,7 +976,7 @@ class MediaSearchModal extends Modal {
             async (file) => {
               button.setText("Updating…");
               try {
-                await updateExistingMovieNote(this.app, file, record, fields, posterUrl, this.plugin.settings.movieFields);
+                await updateExistingMovieNote(this.app, file, record, values, this.plugin.settings.movieFields);
                 new Notice(`Updated: ${file.path}`);
                 this.close();
               } catch (error) {
@@ -995,85 +996,17 @@ class MediaSearchModal extends Modal {
       }
 
       button.setText("Creating…");
-      const folder = this.plugin.settings.moviesFolder.trim().replace(/^\/+|\/+$/g, "") || "Media/Movies";
-      await ensureVaultFolder(this.app, folder);
-
-      let localPosterPath = "";
-      if (posterUrl) {
-        try {
-          const posterFolder = `${folder}/_posters`;
-          await ensureVaultFolder(this.app, posterFolder);
-          const identity = sourceIds.kinopoisk
-            ? `kinopoisk-${sourceIds.kinopoisk}`
-            : sourceIds.omdb ? `imdb-${sourceIds.omdb}`
-              : `tmdb-${sourceIds.tmdb ?? "unknown"}`;
-          const posterPath = `${posterFolder}/${identity}.${getImageExtension(posterUrl)}`;
-          if (!this.app.vault.getAbstractFileByPath(posterPath)) {
-            const response = await requestUrl({ url: posterUrl, method: "GET" });
-            await this.app.vault.createBinary(posterPath, response.arrayBuffer);
-          }
-          localPosterPath = posterPath;
-        } catch (error) {
-          console.warn("Biblioteka: poster download failed", error);
-          new Notice("The note will be created, but the poster could not be downloaded.");
-        }
-      }
-
-      const duration = Number(read("duration"));
-      const personalRating = Number(read("personalRating"));
-      const properties: Record<string, unknown> = {
-        type: record.type,
-        sources: Object.keys(sourceIds).map((id) => getProviderDisplayName(id as MovieProviderId)),
-        source_ids: sourceIds,
-        tags,
-      };
-      const fieldValues: Record<MovieField, unknown> = {
-        title,
-        originalTitle: read("originalTitle"),
-        year: year > 0 ? year : undefined,
-        genres,
-        countries,
-        plot: read("plot"),
-        director: splitList(read("director")),
-        writer: splitList(read("writer")),
-        duration: Number.isFinite(duration) && read("duration") !== "" ? duration : undefined,
-        studio: splitList(read("studio")),
-        actors: splitList(read("actors")),
-      };
-      for (const field of MOVIE_FIELD_ORDER) {
-        const setting = this.plugin.settings.movieFields[field];
-        const value = fieldValues[field];
-        if (setting.enabled && !isEmptyFieldValue(value)) {
-          properties[setting.property.trim() || MOVIE_FIELD_DEFAULTS[field].property] = value;
-        }
-      }
-      if (ratings.length) properties.ratings = ratings;
-      if (read("watched")) properties.watched = read("watched");
-      if (read("lastWatched")) properties.lastWatched = read("lastWatched");
-      if (read("personalRating") !== "" && Number.isFinite(personalRating)) properties.personalRating = personalRating;
-      if (read("personalReview")) properties.personalReview = read("personalReview");
-      if (localPosterPath) properties.poster = localPosterPath;
-
-      const frontmatter = Object.entries(properties)
-        .filter(([, value]) => value !== undefined && value !== null && value !== "")
-        .map(([key, value]) => `${yamlPropertyKey(key)}: ${yamlValue(value)}`)
-        .join("\n");
-      const body = [
-        `# ${title}`,
-        localPosterPath ? `![[${localPosterPath}]]` : "",
-        read("plot"),
-        ratings.length ? ["", "<!-- biblioteka:ratings:start -->", "## Ratings", "", renderRatingsTable(ratings), "<!-- biblioteka:ratings:end -->"].join("\n") : "",
-      ].filter(Boolean).join("\n\n");
-      const content = `---\n${frontmatter}\n---\n\n${body.trim()}\n`;
-
-      const fileName = renderFileNameTemplate(this.plugin.settings.movieFileNameTemplate, title, read("year"));
-      const identity = sourceIds.kinopoisk || sourceIds.omdb || sourceIds.tmdb || "untitled";
-      const baseName = sanitizeFileName(fileName) || `media-${identity}`;
-      let notePath = `${folder}/${baseName}.md`;
-      let suffix = 2;
-      while (this.app.vault.getAbstractFileByPath(notePath)) notePath = `${folder}/${baseName} (${suffix++}).md`;
-
-      const file = await this.app.vault.create(notePath, content);
+      const { file, notePath } = await createMovieNote(
+        this.app,
+        record,
+        values,
+        posterUrl,
+        {
+          moviesFolder: this.plugin.settings.moviesFolder,
+          fileNameTemplate: this.plugin.settings.movieFileNameTemplate,
+          movieFields: this.plugin.settings.movieFields,
+        },
+      );
       await this.app.workspace.getLeaf(false).openFile(file);
       new Notice(`Created: ${notePath}`);
       this.close();
@@ -1089,111 +1022,12 @@ class MediaSearchModal extends Modal {
   }
 }
 
-
-async function updateExistingMovieNote(
-  app: App,
-  file: TFile,
-  record: MovieRecord,
-  fields: Record<string, HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
-  posterUrl: string,
-  movieFields: Record<MovieField, MovieFieldSetting>,
-): Promise<void> {
-  const read = (key: string): string => fields[key]?.value.trim() ?? "";
-  const sourceIds = { ...record.sourceIds };
-  const tags = splitList(read("tags"));
-  if (!tags.includes("Biblioteka")) tags.push("Biblioteka");
-  const candidate: Record<string, unknown> = {
-    type: record.type,
-    watched: read("watched"),
-    lastWatched: read("lastWatched"),
-    personalRating: read("personalRating") === "" ? undefined : Number(read("personalRating")),
-    personalReview: read("personalReview"),
-    tags,
-    source_ids: sourceIds,
-    sources: Object.keys(sourceIds).map((id) => getProviderDisplayName(id as MovieProviderId)),
-  };
-  const fieldValues: Record<MovieField, unknown> = {
-    title: read("title"),
-    originalTitle: read("originalTitle"),
-    year: Number(read("year")) || undefined,
-    genres: splitList(read("genres")),
-    countries: splitList(read("countries")),
-    plot: read("plot"),
-    director: splitList(read("director")),
-    writer: splitList(read("writer")),
-    duration: read("duration") === "" ? undefined : Number(read("duration")),
-    studio: splitList(read("studio")),
-    actors: splitList(read("actors")),
-  };
-  for (const field of MOVIE_FIELD_ORDER) {
-    const setting = movieFields[field];
-    if (setting.enabled && fields[field]) {
-      candidate[setting.property.trim() || MOVIE_FIELD_DEFAULTS[field].property] = fieldValues[field];
-    }
-  }
-
-  await app.fileManager.processFrontMatter(file, (fm) => {
-    const existingIds = (fm.source_ids && typeof fm.source_ids === "object") ? fm.source_ids as Record<string, string> : {};
-    fm.source_ids = { ...sourceIds, ...existingIds };
-    const existingSources = Array.isArray(fm.sources) ? fm.sources as string[] : typeof fm.sources === "string" ? [fm.sources] : [];
-    fm.sources = [...new Set([...existingSources, ...Object.keys(sourceIds).map((id) => getProviderDisplayName(id as MovieProviderId))])];
-    for (const [key, value] of Object.entries(candidate)) {
-      if (key === "source_ids" || key === "sources" || key === "tags" || value === undefined || value === null || value === "") continue;
-      if (Array.isArray(value) && value.length === 0) continue;
-      const current = fm[key];
-      if (current === undefined || current === null || current === "") fm[key] = value;
-    }
-    const existingTags = Array.isArray(fm.tags) ? fm.tags as string[] : typeof fm.tags === "string" ? [fm.tags] : [];
-    fm.tags = [...new Set([...existingTags, ...tags, "Biblioteka"])];
-    if (record.ratings.length) fm.ratings = record.ratings;
-  });
-
-  const current = await app.vault.read(file);
-  let next = current;
-  const start = "<!-- biblioteka:ratings:start -->";
-  const end = "<!-- biblioteka:ratings:end -->";
-  if (record.ratings.length) {
-    const block = [start, "## Ratings", "", renderRatingsTable(record.ratings), end].join("\n");
-    const startIndex = next.indexOf(start);
-    const endIndex = next.indexOf(end);
-    if (startIndex >= 0 && endIndex > startIndex) next = next.slice(0, startIndex) + block + next.slice(endIndex + end.length);
-    else next = `${next.trimEnd()}\n\n${block}\n`;
-  }
-  const plot = movieFields.plot.enabled ? read("plot") : "";
-  if (plot) {
-    const body = next.replace(/^---\n[\s\S]*?\n---\n?/, "").trim();
-    const withoutManaged = body
-      .replace(/^# .*$/m, "")
-      .replace(/!\[\[[^\]]+\]\]/g, "")
-      .replace(/<!-- biblioteka:ratings:start -->[\s\S]*?<!-- biblioteka:ratings:end -->/g, "")
-      .trim();
-    if (!withoutManaged) {
-      const heading = `# ${read("title")}\n`;
-      const headingIndex = next.indexOf(heading);
-      if (headingIndex >= 0) {
-        const insertAt = headingIndex + heading.length;
-        next = `${next.slice(0, insertAt)}\n${plot}\n${next.slice(insertAt)}`;
-      } else next = `${next.trimEnd()}\n\n${plot}\n`;
-    }
-  }
-  if (next !== current) await app.vault.modify(file, next);
-}
-
 function getMovieFieldProperty(settings: BibliotekaSettings, field: MovieField): string {
   return settings.movieFields[field]?.property.trim() || MOVIE_FIELD_DEFAULTS[field].property;
 }
 
 function getEnabledMovieFields(settings: BibliotekaSettings): MovieField[] {
   return MOVIE_FIELD_ORDER.filter((field) => settings.movieFields[field]?.enabled !== false);
-}
-
-function isEmptyFieldValue(value: unknown): boolean {
-  return value === undefined || value === null || value === ""
-    || (Array.isArray(value) && value.length === 0);
-}
-
-function yamlPropertyKey(value: string): string {
-  return /^[A-Za-z_][A-Za-z0-9_-]*$/.test(value) ? value : JSON.stringify(value);
 }
 
 function getProviderApiKey(settings: BibliotekaSettings, providerId: MovieProviderId): string {
@@ -1208,174 +1042,6 @@ function getProviderDisplayName(providerId: MovieProviderId): string {
 
 function getEnabledProviderIds(settings: BibliotekaSettings): MovieProviderId[] {
   return settings.providerOrder.filter((id) => settings.enabledProviders[id] && Boolean(getProviderApiKey(settings, id)));
-}
-
-interface MediaRating {
-  source: string;
-  value: number;
-  scale?: string;
-  votes?: number;
-  url?: string;
-}
-
-function renderRatingsTable(ratings: MediaRating[]): string {
-  const rows = ratings.map((rating) => {
-    const source = rating.url
-      ? `[${escapeMarkdownTable(rating.source)}](${rating.url})`
-      : escapeMarkdownTable(rating.source);
-    const votes = typeof rating.votes === "number"
-      ? rating.votes.toLocaleString("en-US")
-      : "—";
-    return `| ${source} | ${rating.value}${rating.scale ? `/${rating.scale}` : ""} | ${votes} |`;
-  });
-  return [
-    "| Source | Rating | Votes |",
-    "|---|---:|---:|",
-    ...rows,
-  ].join("\n");
-}
-
-function escapeMarkdownTable(value: string): string {
-  return value.replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
-}
-
-interface DuplicateMatch {
-  file: TFile;
-  reason: string;
-}
-
-class DuplicateWarningModal extends Modal {
-  private resolved = false;
-
-  constructor(
-    app: App,
-    private readonly matches: DuplicateMatch[],
-    private readonly onOpenFile: (file: TFile) => void | Promise<void>,
-    private readonly onUpdateFile: (file: TFile) => void | Promise<void>,
-    private readonly onContinue: () => void,
-    private readonly onCancel: () => void,
-  ) {
-    super(app);
-  }
-
-  onOpen(): void {
-    this.contentEl.empty();
-    this.contentEl.createEl("h2", { text: "Possible duplicate found" });
-    this.contentEl.createEl("p", {
-      text: "Biblioteka found an existing note that may describe this movie or series. You can open it, update it with missing information, or create a separate copy.",
-    });
-
-    for (const match of this.matches.slice(0, 8)) {
-      const row = this.contentEl.createDiv({ cls: "biblioteka-duplicate-match" });
-      row.createEl("strong", { text: match.file.basename });
-      row.createEl("p", { text: match.reason, cls: "biblioteka-muted" });
-      const rowActions = row.createDiv({ cls: "biblioteka-preview-actions" });
-      const openButton = rowActions.createEl("button", { text: "Open this note" });
-      openButton.addEventListener("click", () => {
-        this.resolved = true;
-        void this.onOpenFile(match.file);
-        this.close();
-      });
-      const updateButton = rowActions.createEl("button", { text: "Update existing note" });
-      updateButton.addEventListener("click", () => {
-        this.resolved = true;
-        this.close();
-        void this.onUpdateFile(match.file);
-      });
-    }
-
-    if (this.matches.length > 8) {
-      this.contentEl.createEl("p", {
-        text: `And ${this.matches.length - 8} more possible match(es).`,
-        cls: "biblioteka-muted",
-      });
-    }
-
-    const actions = this.contentEl.createDiv({ cls: "biblioteka-preview-actions" });
-    const continueButton = actions.createEl("button", { text: "Create copy", cls: "mod-cta" });
-    continueButton.addEventListener("click", () => {
-      this.resolved = true;
-      this.close();
-      this.onContinue();
-    });
-    const cancelButton = actions.createEl("button", { text: "Cancel" });
-    cancelButton.addEventListener("click", () => {
-      this.resolved = true;
-      this.close();
-      this.onCancel();
-    });
-  }
-
-  onClose(): void {
-    this.contentEl.empty();
-    if (!this.resolved) this.onCancel();
-  }
-}
-
-async function findDuplicateNotes(
-  app: App,
-  sourceIds: Partial<Record<MovieProviderId, string>>,
-  title: string,
-  year: number,
-  mediaType: string,
-  titleProperty = "title",
-  yearProperty = "year",
-): Promise<DuplicateMatch[]> {
-  const titleKey = normalizeDuplicateTitle(title);
-  const typeKey = normalizeMediaType(mediaType);
-  const matches: DuplicateMatch[] = [];
-
-  for (const file of app.vault.getMarkdownFiles()) {
-    const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter;
-    if (!frontmatter) continue;
-
-    const existingIds = (frontmatter.source_ids && typeof frontmatter.source_ids === "object")
-      ? frontmatter.source_ids as Record<string, string>
-      : {};
-    const legacyIds: Record<string, string> = {
-      ...(frontmatter.kinopoisk_id ? { kinopoisk: String(frontmatter.kinopoisk_id) } : {}),
-      ...(frontmatter.imdb_id ? { omdb: String(frontmatter.imdb_id) } : {}),
-    };
-    const allExistingIds = { ...legacyIds, ...existingIds };
-    const matchedSource = (Object.keys(sourceIds) as MovieProviderId[])
-      .find((source) => sourceIds[source] && allExistingIds[source] === sourceIds[source]);
-    if (matchedSource) {
-      const label = matchedSource === "kinopoisk" ? "Kinopoisk" : matchedSource === "omdb" ? "OMDb" : "TMDB";
-      matches.push({ file, reason: `Same ${label} ID: ${sourceIds[matchedSource]}` });
-      continue;
-    }
-
-    const noteContent = await app.vault.cachedRead(file);
-    const headingTitle = noteContent.match(/^#\s+(.+)$/m)?.[1];
-    const fallbackTitle = headingTitle || file.basename.replace(/\s+\d{4}$/, "");
-    const existingTitle = normalizeDuplicateTitle(String(frontmatter[titleProperty] ?? fallbackTitle));
-    const existingYear = Number(frontmatter[yearProperty]);
-    const existingType = normalizeMediaType(String(frontmatter.type ?? ""));
-
-    if (titleKey && existingTitle === titleKey && year > 0 && existingYear === year
-      && typeKey !== "" && existingType === typeKey) {
-      matches.push({ file, reason: `Matching title, year (${year}) and media type.` });
-    }
-  }
-  return matches;
-}
-
-function normalizeDuplicateTitle(value: string): string {
-  return value
-    .normalize("NFKC")
-    .toLocaleLowerCase()
-    .replace(/[’‘']/g, "")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .trim()
-    .replace(/\s+/g, " ");
-}
-
-function normalizeMediaType(value: string): string {
-  const normalized = value.trim().toLocaleLowerCase();
-  if (/movie|film|фильм/.test(normalized)) return "movie";
-  if (/series|сериал/.test(normalized)) return "series";
-  if (/tv show/.test(normalized)) return "tv show";
-  return normalized;
 }
 
 /**
@@ -1432,52 +1098,6 @@ function formatMediaType(type?: string): string {
   }
 }
 
-
-async function ensureVaultFolder(app: App, folderPath: string): Promise<void> {
-  const parts = folderPath.split("/").filter(Boolean);
-  let current = "";
-  for (const part of parts) {
-    current = current ? `${current}/${part}` : part;
-    if (!app.vault.getAbstractFileByPath(current)) {
-      await app.vault.createFolder(current);
-    }
-  }
-}
-
-function renderFileNameTemplate(template: string, title: string, year: string): string {
-  return template
-    .replace(/\{\{\s*title\s*\}\}/gi, title)
-    .replace(/\{\{\s*year\s*\}\}/gi, year)
-    .replace(/\{\{[^{}]+\}\}/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-function sanitizeFileName(value: string): string {
-  return value
-    .replace(/[\/:*?"<>|#^\[\]\\]/g, "")
-    .replace(/[. ]+$/g, "")
-    .replace(/\s+/g, " ")
-    .slice(0, 100);
-}
-
-function splitList(value: string): string[] {
-  return [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
-}
-
-function yamlValue(value: unknown): string {
-  return JSON.stringify(value) ?? "null";
-}
-
-function getImageExtension(url: string): string {
-  try {
-    const pathname = new URL(url).pathname.toLowerCase();
-    const match = pathname.match(/\.(jpe?g|png|webp|gif)$/);
-    if (match) return match[1] === "jpeg" ? "jpg" : match[1];
-  } catch {
-    // Fall back to a broadly supported image format.
-  }
-  return "jpg";
-}
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
