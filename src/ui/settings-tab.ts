@@ -144,7 +144,7 @@ export class BibliotekaSettingTab extends PluginSettingTab {
             await new OMDbProvider(key).testConnection();
             new Notice("OMDb API connection successful.");
           } catch (error) {
-            new Notice(`OMDb connection failed: ${getErrorMessage(error)}`);
+            new Notice(`OMDb connection failed: ${error instanceof Error ? error.message : "An unexpected error occurred."}`);
           } finally {
             button.setButtonText("Test connection");
             button.setDisabled(false);
@@ -186,7 +186,7 @@ export class BibliotekaSettingTab extends PluginSettingTab {
             await new TMDBProvider(key).testConnection();
             new Notice("TMDB API connection successful.");
           } catch (error) {
-            new Notice(`TMDB connection failed: ${getErrorMessage(error)}`);
+            new Notice(`TMDB connection failed: ${error instanceof Error ? error.message : "An unexpected error occurred."}`);
           } finally {
             button.setButtonText("Test connection");
             button.setDisabled(false);
