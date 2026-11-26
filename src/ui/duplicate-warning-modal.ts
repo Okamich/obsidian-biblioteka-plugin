@@ -1,7 +1,7 @@
 import { App, Modal, TFile } from "obsidian";
-import { DuplicateMatch } from "../services/duplicate-service";
+import type { DuplicateMatch } from "../services/duplicate-service";
 
-class DuplicateWarningModal extends Modal {
+export class DuplicateWarningModal extends Modal {
   private resolved = false;
 
   constructor(
