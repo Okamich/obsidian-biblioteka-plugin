@@ -1213,6 +1213,11 @@ function getEnabledProviderIds(settings: BibliotekaSettings): MovieProviderId[] 
   return settings.providerOrder.filter((id) => settings.enabledProviders[id] && Boolean(getProviderApiKey(settings, id)));
 }
 
+/**
+ * Metadata-based SFW filter.
+ * This targets erotic/adult productions and explicit sexual descriptions,
+ * not ordinary age-restricted movies or incidental mature themes.
+ */
 function isExplicitAdultContent(item: KinopoiskSearchItem): boolean {
   const genreNames = (item.genres ?? []).map((genre) =>
     typeof genre === "string" ? genre : genre.genre ?? "",
