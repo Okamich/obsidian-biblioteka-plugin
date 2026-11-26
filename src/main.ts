@@ -1,4 +1,4 @@
-import { Modal, Notice, Plugin, TFile } from "obsidian";
+import { App, Modal, Notice, Plugin, TFile } from "obsidian";
 import {
   KinopoiskProvider,
   KinopoiskSearchItem,
@@ -12,7 +12,7 @@ import { DuplicateWarningModal } from "./ui/duplicate-warning-modal";
 import { findDuplicateNotes, normalizeMediaType } from "./services/duplicate-service";
 import { renderRatingsTable } from "./services/ratings-renderer";
 import { createMovieNote, updateExistingMovieNote } from "./services/movie-note-service";
-import { DEFAULT_SETTINGS, BibliotekaSettings } from "./settings";
+import { DEFAULT_SETTINGS, BibliotekaSettings, MOVIE_FIELD_DEFAULTS, MOVIE_FIELD_ORDER, MovieFieldSetting } from "./settings";
 import { BibliotekaSettingTab } from "./ui/settings-tab";
 
 export default class BibliotekaPlugin extends Plugin {
@@ -71,7 +71,7 @@ export default class BibliotekaPlugin extends Plugin {
       try {
         const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
         if (!fm) continue;
-        const ids = (fm.source_ids && typeof fm.source_ids === "object")
+        const ids: Partial<Record<MovieProviderId, string>> = (fm.source_ids && typeof fm.source_ids === "object")
           ? { ...(fm.source_ids as Partial<Record<MovieProviderId, string>>) }
           : {};
         if (!ids.kinopoisk && fm.kinopoisk_id) ids.kinopoisk = String(fm.kinopoisk_id);
