@@ -64,3 +64,8 @@ export default class BibliotekaPlugin extends Plugin {
   }
 }
 
+function getProviderApiKey(settings: BibliotekaSettings, providerId: MovieProviderId): string {
+  if (providerId === "kinopoisk") return settings.kinopoiskApiKey.trim();
+  if (providerId === "omdb") return settings.omdbApiKey.trim();
+  return settings.tmdbApiKey.trim();
+}
