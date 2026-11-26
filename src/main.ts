@@ -9,7 +9,6 @@ import {
   SettingGroup,
   TFile,
   TFolder,
-  requestUrl,
 } from "obsidian";
 import {
   KinopoiskProvider,
@@ -1030,15 +1029,6 @@ function getEnabledMovieFields(settings: BibliotekaSettings): MovieField[] {
   return MOVIE_FIELD_ORDER.filter((field) => settings.movieFields[field]?.enabled !== false);
 }
 
-function isEmptyFieldValue(value: unknown): boolean {
-  return value === undefined || value === null || value === ""
-    || (Array.isArray(value) && value.length === 0);
-}
-
-function yamlPropertyKey(value: string): string {
-  return /^[A-Za-z_][A-Za-z0-9_-]*$/.test(value) ? value : JSON.stringify(value);
-}
-
 function getProviderApiKey(settings: BibliotekaSettings, providerId: MovieProviderId): string {
   if (providerId === "kinopoisk") return settings.kinopoiskApiKey.trim();
   if (providerId === "omdb") return settings.omdbApiKey.trim();
@@ -1107,52 +1097,6 @@ function formatMediaType(type?: string): string {
   }
 }
 
-
-async function ensureVaultFolder(app: App, folderPath: string): Promise<void> {
-  const parts = folderPath.split("/").filter(Boolean);
-  let current = "";
-  for (const part of parts) {
-    current = current ? `${current}/${part}` : part;
-    if (!app.vault.getAbstractFileByPath(current)) {
-      await app.vault.createFolder(current);
-    }
-  }
-}
-
-function renderFileNameTemplate(template: string, title: string, year: string): string {
-  return template
-    .replace(/\{\{\s*title\s*\}\}/gi, title)
-    .replace(/\{\{\s*year\s*\}\}/gi, year)
-    .replace(/\{\{[^{}]+\}\}/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-function sanitizeFileName(value: string): string {
-  return value
-    .replace(/[\/:*?"<>|#^\[\]\\]/g, "")
-    .replace(/[. ]+$/g, "")
-    .replace(/\s+/g, " ")
-    .slice(0, 100);
-}
-
-function splitList(value: string): string[] {
-  return [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
-}
-
-function yamlValue(value: unknown): string {
-  return JSON.stringify(value) ?? "null";
-}
-
-function getImageExtension(url: string): string {
-  try {
-    const pathname = new URL(url).pathname.toLowerCase();
-    const match = pathname.match(/\.(jpe?g|png|webp|gif)$/);
-    if (match) return match[1] === "jpeg" ? "jpg" : match[1];
-  } catch {
-    // Fall back to a broadly supported image format.
-  }
-  return "jpg";
-}
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
