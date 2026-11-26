@@ -1,3 +1,5 @@
+import type { MovieField, MovieProviderId } from "./models/movie";
+
 export type MovieFieldSetting = { enabled: boolean; property: string };
 
 export const MOVIE_FIELD_DEFAULTS: Record<MovieField, MovieFieldSetting> = {
