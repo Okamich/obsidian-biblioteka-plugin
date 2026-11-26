@@ -1,4 +1,4 @@
-import { App, TFile } from "obsidian";
+import { App, Notice, TFile, requestUrl } from "obsidian";
 import { MovieField, MovieRecord, MovieProviderId } from "../models/movie";
 import { renderRatingsTable } from "./ratings-renderer";
 
@@ -119,4 +119,160 @@ function splitList(value: string): string[] {
 
 function getProviderDisplayName(providerId: MovieProviderId): string {
   return providerId === "kinopoisk" ? "Кинопоиск" : providerId === "omdb" ? "OMDb" : "TMDB";
+}
+
+
+export interface CreateMovieNoteOptions {
+  moviesFolder: string;
+  fileNameTemplate: string;
+  movieFields: Record<MovieField, MovieFieldSetting>;
+}
+
+export async function createMovieNote(
+  app: App,
+  record: MovieRecord,
+  fields: MovieFields,
+  posterUrl: string,
+  options: CreateMovieNoteOptions,
+): Promise<{ file: TFile; notePath: string }> {
+  const read = (key: string): string => fields[key] ?? "";
+  const title = read("title");
+  const year = Number(read("year")) || 0;
+  const genres = splitList(read("genres"));
+  const countries = splitList(read("countries"));
+  const sourceIds = { ...record.sourceIds };
+  const tags = splitList(read("tags"));
+  if (!tags.includes("Biblioteka")) tags.push("Biblioteka");
+  const ratings = record.ratings;
+
+  const folder = options.moviesFolder.trim().replace(/^\\/+|\\/+$/g, "") || "Media/Movies";
+  await ensureVaultFolder(app, folder);
+
+  let localPosterPath = "";
+  if (posterUrl) {
+    try {
+      const posterFolder = `${folder}/_posters`;
+      await ensureVaultFolder(app, posterFolder);
+      const identity = sourceIds.kinopoisk
+        ? `kinopoisk-${sourceIds.kinopoisk}`
+        : sourceIds.omdb ? `imdb-${sourceIds.omdb}`
+          : `tmdb-${sourceIds.tmdb ?? "unknown"}`;
+      const posterPath = `${posterFolder}/${identity}.${getImageExtension(posterUrl)}`;
+      if (!app.vault.getAbstractFileByPath(posterPath)) {
+        const response = await requestUrl({ url: posterUrl, method: "GET" });
+        await app.vault.createBinary(posterPath, response.arrayBuffer);
+      }
+      localPosterPath = posterPath;
+    } catch (error) {
+      console.warn("Biblioteka: poster download failed", error);
+      new Notice("The note will be created, but the poster could not be downloaded.");
+    }
+  }
+
+  const duration = Number(read("duration"));
+  const personalRating = Number(read("personalRating"));
+  const properties: Record<string, unknown> = {
+    type: record.type,
+    sources: Object.keys(sourceIds).map((id) => getProviderDisplayName(id as MovieProviderId)),
+    source_ids: sourceIds,
+    tags,
+  };
+  const fieldValues: Record<MovieField, unknown> = {
+    title,
+    originalTitle: read("originalTitle"),
+    year: year > 0 ? year : undefined,
+    genres,
+    countries,
+    plot: read("plot"),
+    director: splitList(read("director")),
+    writer: splitList(read("writer")),
+    duration: Number.isFinite(duration) && read("duration") !== "" ? duration : undefined,
+    studio: splitList(read("studio")),
+    actors: splitList(read("actors")),
+  };
+  for (const field of MOVIE_FIELD_ORDER) {
+    const setting = options.movieFields[field];
+    const value = fieldValues[field];
+    if (setting.enabled && !isEmptyFieldValue(value)) {
+      properties[setting.property.trim() || MOVIE_FIELD_DEFAULTS[field]] = value;
+    }
+  }
+  if (ratings.length) properties.ratings = ratings;
+  if (read("watched")) properties.watched = read("watched");
+  if (read("lastWatched")) properties.lastWatched = read("lastWatched");
+  if (read("personalRating") !== "" && Number.isFinite(personalRating)) properties.personalRating = personalRating;
+  if (read("personalReview")) properties.personalReview = read("personalReview");
+  if (localPosterPath) properties.poster = localPosterPath;
+
+  const frontmatter = Object.entries(properties)
+    .filter(([, value]) => value !== undefined && value !== null && value !== "")
+    .map(([key, value]) => `${yamlPropertyKey(key)}: ${yamlValue(value)}`)
+    .join("\\n");
+  const body = [
+    `# ${title}`,
+    localPosterPath ? `![[${localPosterPath}]]` : "",
+    read("plot"),
+    ratings.length ? ["", "<!-- biblioteka:ratings:start -->", "## Ratings", "", renderRatingsTable(ratings), "<!-- biblioteka:ratings:end -->"].join("\\n") : "",
+  ].filter(Boolean).join("\\n\\n");
+  const content = `---\\n${frontmatter}\\n---\\n\\n${body.trim()}\\n`;
+
+  const fileName = renderFileNameTemplate(options.fileNameTemplate, title, read("year"));
+  const identity = sourceIds.kinopoisk || sourceIds.omdb || sourceIds.tmdb || "untitled";
+  const baseName = sanitizeFileName(fileName) || `media-${identity}`;
+  let notePath = `${folder}/${baseName}.md`;
+  let suffix = 2;
+  while (app.vault.getAbstractFileByPath(notePath)) notePath = `${folder}/${baseName} (${suffix++}).md`;
+
+  const file = await app.vault.create(notePath, content);
+  return { file, notePath };
+}
+
+function isEmptyFieldValue(value: unknown): boolean {
+  return value === undefined || value === null || value === ""
+    || (Array.isArray(value) && value.length === 0);
+}
+
+function yamlPropertyKey(value: string): string {
+  return /^[A-Za-z_][A-Za-z0-9_-]*$/.test(value) ? value : JSON.stringify(value);
+}
+
+function yamlValue(value: unknown): string {
+  return JSON.stringify(value) ?? "null";
+}
+
+async function ensureVaultFolder(app: App, folderPath: string): Promise<void> {
+  const parts = folderPath.split("/").filter(Boolean);
+  let current = "";
+  for (const part of parts) {
+    current = current ? `${current}/${part}` : part;
+    if (!app.vault.getAbstractFileByPath(current)) await app.vault.createFolder(current);
+  }
+}
+
+function renderFileNameTemplate(template: string, title: string, year: string): string {
+  return template
+    .replace(/\\{\\{\\s*title\\s*\\}\\}/gi, title)
+    .replace(/\\{\\{\\s*year\\s*\\}\\}/gi, year)
+    .replace(/\\{\\{[^{}]+\\}\\}/g, "")
+    .replace(/\\s+/g, " ")
+    .trim();
+}
+
+function sanitizeFileName(value: string): string {
+  return value
+    .replace(/[\\/:*?"<>|#^\\[\\]\\\\]/g, "")
+    .replace(/[. ]+$/g, "")
+    .replace(/\\s+/g, " ")
+    .slice(0, 100);
+}
+
+function getImageExtension(url: string): string {
+  try {
+    const pathname = new URL(url).pathname.toLowerCase();
+    const match = pathname.match(/\\.(jpe?g|png|webp|gif)$/);
+    if (match) return match[1] === "jpeg" ? "jpg" : match[1];
+  } catch {
+    // Fall back to a broadly supported image format.
+  }
+  return "jpg";
 }
