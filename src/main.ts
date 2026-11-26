@@ -20,6 +20,8 @@ import { OMDbProvider, OMDbSearchItem } from "./providers/omdb";
 import { TMDBProvider, TMDBSearchItem } from "./providers/tmdb";
 import { MovieField, MovieRecord, MovieProviderId } from "./models/movie";
 import { resolveMovieRecord } from "./providers/movie-resolver";
+import { DuplicateWarningModal } from "./ui/duplicate-warning-modal";
+import { findDuplicateNotes, normalizeMediaType } from "./services/duplicate-service";
 
 type MovieFieldSetting = { enabled: boolean; property: string };
 
@@ -1237,145 +1239,6 @@ function renderRatingsTable(ratings: MediaRating[]): string {
 
 function escapeMarkdownTable(value: string): string {
   return value.replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
-}
-
-interface DuplicateMatch {
-  file: TFile;
-  reason: string;
-}
-
-class DuplicateWarningModal extends Modal {
-  private resolved = false;
-
-  constructor(
-    app: App,
-    private readonly matches: DuplicateMatch[],
-    private readonly onOpenFile: (file: TFile) => void | Promise<void>,
-    private readonly onUpdateFile: (file: TFile) => void | Promise<void>,
-    private readonly onContinue: () => void,
-    private readonly onCancel: () => void,
-  ) {
-    super(app);
-  }
-
-  onOpen(): void {
-    this.contentEl.empty();
-    this.contentEl.createEl("h2", { text: "Possible duplicate found" });
-    this.contentEl.createEl("p", {
-      text: "Biblioteka found an existing note that may describe this movie or series. You can open it, update it with missing information, or create a separate copy.",
-    });
-
-    for (const match of this.matches.slice(0, 8)) {
-      const row = this.contentEl.createDiv({ cls: "biblioteka-duplicate-match" });
-      row.createEl("strong", { text: match.file.basename });
-      row.createEl("p", { text: match.reason, cls: "biblioteka-muted" });
-      const rowActions = row.createDiv({ cls: "biblioteka-preview-actions" });
-      const openButton = rowActions.createEl("button", { text: "Open this note" });
-      openButton.addEventListener("click", () => {
-        this.resolved = true;
-        void this.onOpenFile(match.file);
-        this.close();
-      });
-      const updateButton = rowActions.createEl("button", { text: "Update existing note" });
-      updateButton.addEventListener("click", () => {
-        this.resolved = true;
-        this.close();
-        void this.onUpdateFile(match.file);
-      });
-    }
-
-    if (this.matches.length > 8) {
-      this.contentEl.createEl("p", {
-        text: `And ${this.matches.length - 8} more possible match(es).`,
-        cls: "biblioteka-muted",
-      });
-    }
-
-    const actions = this.contentEl.createDiv({ cls: "biblioteka-preview-actions" });
-    const continueButton = actions.createEl("button", { text: "Create copy", cls: "mod-cta" });
-    continueButton.addEventListener("click", () => {
-      this.resolved = true;
-      this.close();
-      this.onContinue();
-    });
-    const cancelButton = actions.createEl("button", { text: "Cancel" });
-    cancelButton.addEventListener("click", () => {
-      this.resolved = true;
-      this.close();
-      this.onCancel();
-    });
-  }
-
-  onClose(): void {
-    this.contentEl.empty();
-    if (!this.resolved) this.onCancel();
-  }
-}
-
-async function findDuplicateNotes(
-  app: App,
-  sourceIds: Partial<Record<MovieProviderId, string>>,
-  title: string,
-  year: number,
-  mediaType: string,
-  titleProperty = "title",
-  yearProperty = "year",
-): Promise<DuplicateMatch[]> {
-  const titleKey = normalizeDuplicateTitle(title);
-  const typeKey = normalizeMediaType(mediaType);
-  const matches: DuplicateMatch[] = [];
-
-  for (const file of app.vault.getMarkdownFiles()) {
-    const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter;
-    if (!frontmatter) continue;
-
-    const existingIds = (frontmatter.source_ids && typeof frontmatter.source_ids === "object")
-      ? frontmatter.source_ids as Record<string, string>
-      : {};
-    const legacyIds: Record<string, string> = {
-      ...(frontmatter.kinopoisk_id ? { kinopoisk: String(frontmatter.kinopoisk_id) } : {}),
-      ...(frontmatter.imdb_id ? { omdb: String(frontmatter.imdb_id) } : {}),
-    };
-    const allExistingIds = { ...legacyIds, ...existingIds };
-    const matchedSource = (Object.keys(sourceIds) as MovieProviderId[])
-      .find((source) => sourceIds[source] && allExistingIds[source] === sourceIds[source]);
-    if (matchedSource) {
-      const label = matchedSource === "kinopoisk" ? "Kinopoisk" : matchedSource === "omdb" ? "OMDb" : "TMDB";
-      matches.push({ file, reason: `Same ${label} ID: ${sourceIds[matchedSource]}` });
-      continue;
-    }
-
-    const noteContent = await app.vault.cachedRead(file);
-    const headingTitle = noteContent.match(/^#\s+(.+)$/m)?.[1];
-    const fallbackTitle = headingTitle || file.basename.replace(/\s+\d{4}$/, "");
-    const existingTitle = normalizeDuplicateTitle(String(frontmatter[titleProperty] ?? fallbackTitle));
-    const existingYear = Number(frontmatter[yearProperty]);
-    const existingType = normalizeMediaType(String(frontmatter.type ?? ""));
-
-    if (titleKey && existingTitle === titleKey && year > 0 && existingYear === year
-      && typeKey !== "" && existingType === typeKey) {
-      matches.push({ file, reason: `Matching title, year (${year}) and media type.` });
-    }
-  }
-  return matches;
-}
-
-function normalizeDuplicateTitle(value: string): string {
-  return value
-    .normalize("NFKC")
-    .toLocaleLowerCase()
-    .replace(/[’‘']/g, "")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .trim()
-    .replace(/\s+/g, " ");
-}
-
-function normalizeMediaType(value: string): string {
-  const normalized = value.trim().toLocaleLowerCase();
-  if (/movie|film|фильм/.test(normalized)) return "movie";
-  if (/series|сериал/.test(normalized)) return "series";
-  if (/tv show/.test(normalized)) return "tv show";
-  return normalized;
 }
 
 /**
