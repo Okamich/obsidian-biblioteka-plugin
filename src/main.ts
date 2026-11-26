@@ -23,7 +23,7 @@ import { resolveMovieRecord } from "./providers/movie-resolver";
 import { DuplicateWarningModal } from "./ui/duplicate-warning-modal";
 import { findDuplicateNotes, normalizeMediaType } from "./services/duplicate-service";
 import { renderRatingsTable } from "./services/ratings-renderer";
-import { updateExistingMovieNote } from "./services/note-service";
+import { createMovieNote, updateExistingMovieNote } from "./services/note-service";
 
 type MovieFieldSetting = { enabled: boolean; property: string };
 
@@ -939,8 +939,10 @@ class MediaSearchModal extends Modal {
     button: HTMLButtonElement,
     skipDuplicateCheck = false,
   ): Promise<void> {
-    const read = (key: string): string => fields[key]?.value.trim() ?? "";
-    const title = read("title");
+    const values = Object.fromEntries(
+      Object.entries(fields).map(([key, field]) => [key, field.value.trim()]),
+    );
+    const title = values.title ?? "";
     if (!title) {
       new Notice("A title is required to create a note.");
       fields.title?.focus();
@@ -950,13 +952,8 @@ class MediaSearchModal extends Modal {
     button.disabled = true;
     button.setText(skipDuplicateCheck ? "Creating…" : "Checking duplicates…");
     try {
-      const year = Number(read("year")) || 0;
-      const genres = splitList(read("genres"));
-      const countries = splitList(read("countries"));
+      const year = Number(values.year) || 0;
       const sourceIds = { ...record.sourceIds };
-      const tags = splitList(read("tags"));
-      if (!tags.includes("Biblioteka")) tags.push("Biblioteka");
-      const ratings = record.ratings;
 
       if (!skipDuplicateCheck) {
         const duplicates = await findDuplicateNotes(
@@ -979,7 +976,7 @@ class MediaSearchModal extends Modal {
             async (file) => {
               button.setText("Updating…");
               try {
-                await updateExistingMovieNote(this.app, file, record, Object.fromEntries(Object.entries(fields).map(([key, field]) => [key, field.value.trim()])), this.plugin.settings.movieFields);
+                await updateExistingMovieNote(this.app, file, record, values, this.plugin.settings.movieFields);
                 new Notice(`Updated: ${file.path}`);
                 this.close();
               } catch (error) {
@@ -999,85 +996,17 @@ class MediaSearchModal extends Modal {
       }
 
       button.setText("Creating…");
-      const folder = this.plugin.settings.moviesFolder.trim().replace(/^\/+|\/+$/g, "") || "Media/Movies";
-      await ensureVaultFolder(this.app, folder);
-
-      let localPosterPath = "";
-      if (posterUrl) {
-        try {
-          const posterFolder = `${folder}/_posters`;
-          await ensureVaultFolder(this.app, posterFolder);
-          const identity = sourceIds.kinopoisk
-            ? `kinopoisk-${sourceIds.kinopoisk}`
-            : sourceIds.omdb ? `imdb-${sourceIds.omdb}`
-              : `tmdb-${sourceIds.tmdb ?? "unknown"}`;
-          const posterPath = `${posterFolder}/${identity}.${getImageExtension(posterUrl)}`;
-          if (!this.app.vault.getAbstractFileByPath(posterPath)) {
-            const response = await requestUrl({ url: posterUrl, method: "GET" });
-            await this.app.vault.createBinary(posterPath, response.arrayBuffer);
-          }
-          localPosterPath = posterPath;
-        } catch (error) {
-          console.warn("Biblioteka: poster download failed", error);
-          new Notice("The note will be created, but the poster could not be downloaded.");
-        }
-      }
-
-      const duration = Number(read("duration"));
-      const personalRating = Number(read("personalRating"));
-      const properties: Record<string, unknown> = {
-        type: record.type,
-        sources: Object.keys(sourceIds).map((id) => getProviderDisplayName(id as MovieProviderId)),
-        source_ids: sourceIds,
-        tags,
-      };
-      const fieldValues: Record<MovieField, unknown> = {
-        title,
-        originalTitle: read("originalTitle"),
-        year: year > 0 ? year : undefined,
-        genres,
-        countries,
-        plot: read("plot"),
-        director: splitList(read("director")),
-        writer: splitList(read("writer")),
-        duration: Number.isFinite(duration) && read("duration") !== "" ? duration : undefined,
-        studio: splitList(read("studio")),
-        actors: splitList(read("actors")),
-      };
-      for (const field of MOVIE_FIELD_ORDER) {
-        const setting = this.plugin.settings.movieFields[field];
-        const value = fieldValues[field];
-        if (setting.enabled && !isEmptyFieldValue(value)) {
-          properties[setting.property.trim() || MOVIE_FIELD_DEFAULTS[field].property] = value;
-        }
-      }
-      if (ratings.length) properties.ratings = ratings;
-      if (read("watched")) properties.watched = read("watched");
-      if (read("lastWatched")) properties.lastWatched = read("lastWatched");
-      if (read("personalRating") !== "" && Number.isFinite(personalRating)) properties.personalRating = personalRating;
-      if (read("personalReview")) properties.personalReview = read("personalReview");
-      if (localPosterPath) properties.poster = localPosterPath;
-
-      const frontmatter = Object.entries(properties)
-        .filter(([, value]) => value !== undefined && value !== null && value !== "")
-        .map(([key, value]) => `${yamlPropertyKey(key)}: ${yamlValue(value)}`)
-        .join("\n");
-      const body = [
-        `# ${title}`,
-        localPosterPath ? `![[${localPosterPath}]]` : "",
-        read("plot"),
-        ratings.length ? ["", "<!-- biblioteka:ratings:start -->", "## Ratings", "", renderRatingsTable(ratings), "<!-- biblioteka:ratings:end -->"].join("\n") : "",
-      ].filter(Boolean).join("\n\n");
-      const content = `---\n${frontmatter}\n---\n\n${body.trim()}\n`;
-
-      const fileName = renderFileNameTemplate(this.plugin.settings.movieFileNameTemplate, title, read("year"));
-      const identity = sourceIds.kinopoisk || sourceIds.omdb || sourceIds.tmdb || "untitled";
-      const baseName = sanitizeFileName(fileName) || `media-${identity}`;
-      let notePath = `${folder}/${baseName}.md`;
-      let suffix = 2;
-      while (this.app.vault.getAbstractFileByPath(notePath)) notePath = `${folder}/${baseName} (${suffix++}).md`;
-
-      const file = await this.app.vault.create(notePath, content);
+      const { file, notePath } = await createMovieNote(
+        this.app,
+        record,
+        values,
+        posterUrl,
+        {
+          moviesFolder: this.plugin.settings.moviesFolder,
+          fileNameTemplate: this.plugin.settings.movieFileNameTemplate,
+          movieFields: this.plugin.settings.movieFields,
+        },
+      );
       await this.app.workspace.getLeaf(false).openFile(file);
       new Notice(`Created: ${notePath}`);
       this.close();
