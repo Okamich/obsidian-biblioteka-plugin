@@ -938,9 +938,10 @@ class MediaSearchModal extends Modal {
     button: HTMLButtonElement,
     skipDuplicateCheck = false,
   ): Promise<void> {
-    const values = Object.fromEntries(
-      Object.entries(fields).map(([key, field]) => [key, field.value.trim()]),
-    );
+    const values: Record<string, string> = {};
+    for (const [key, field] of Object.entries(fields)) {
+      values[key] = field.value.trim();
+    }
     const title = values.title ?? "";
     if (!title) {
       new Notice("A title is required to create a note.");
