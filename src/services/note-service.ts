@@ -4,7 +4,7 @@ import { renderRatingsTable } from "./ratings-renderer";
 
 type MovieFieldSetting = { enabled: boolean; property: string };
 
-type MovieFields = Record<string, HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>;
+type MovieFields = Record<string, string>;
 
 const MOVIE_FIELD_DEFAULTS: Record<MovieField, string> = {
   title: "title",
@@ -32,7 +32,7 @@ export async function updateExistingMovieNote(
   fields: MovieFields,
   movieFields: Record<MovieField, MovieFieldSetting>,
 ): Promise<void> {
-  const read = (key: string): string => fields[key]?.value.trim() ?? "";
+  const read = (key: string): string => fields[key] ?? "";
   const sourceIds = { ...record.sourceIds };
   const tags = splitList(read("tags"));
   if (!tags.includes("Biblioteka")) tags.push("Biblioteka");
