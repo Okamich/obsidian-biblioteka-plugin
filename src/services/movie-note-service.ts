@@ -1,4 +1,4 @@
-import { App, Notice } from "obsidian";
+import { App, Notice, TFile } from "obsidian";
 import { MovieField, MovieRecord, MovieProviderId } from "../models/movie";
 import { createMarkdownFile, saveRemoteImage } from "./note-file-service";
 import { renderMovieNote } from "./movie-note-renderer";
@@ -116,4 +116,12 @@ export async function createMovieNote(
 function isEmptyFieldValue(value: unknown): boolean {
   return value === undefined || value === null || value === ""
     || (Array.isArray(value) && value.length === 0);
+}
+
+function splitList(value: string): string[] {
+  return [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
+}
+
+function getProviderDisplayName(providerId: MovieProviderId): string {
+  return providerId === "kinopoisk" ? "Кинопоиск" : providerId === "omdb" ? "OMDb" : "TMDB";
 }
