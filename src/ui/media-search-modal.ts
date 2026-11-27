@@ -1,30 +1,18 @@
 import { App, Modal, Notice, Plugin } from "obsidian";
-import { KinopoiskProvider, KinopoiskSearchItem, MediaKind } from "../providers/kinopoisk";
-import { OMDbProvider, OMDbSearchItem } from "../providers/omdb";
-import { TMDBProvider, TMDBSearchItem } from "../providers/tmdb";
-import { MovieField, MovieRecord, MovieProviderId } from "../models/movie";
+import { MovieField, MovieRecord } from "../models/movie";
 import { resolveMovieRecord } from "../providers/movie-resolver";
 import { DuplicateWarningModal } from "./duplicate-warning-modal";
 import { findDuplicateNotes } from "../services/duplicate-service";
 import { createMovieNote, updateExistingMovieNote } from "../services/movie-note-service";
 import { BibliotekaSettings, MOVIE_FIELD_DEFAULTS, MOVIE_FIELD_ORDER } from "../settings";
+import type { MediaKind } from "../providers/kinopoisk";
+import { searchMedia, UnifiedSearchResult } from "../services/media-search-service";
 
 interface MediaSearchPlugin extends Plugin {
   settings: BibliotekaSettings;
 }
 
-interface UnifiedSearchResult {
-  source: MovieProviderId;
-  id: string;
-  title: string;
-  year: number;
-  type: string;
-  posterUrl: string;
-  rating?: string | number;
-  kinopoiskItem?: KinopoiskSearchItem;
-  omdbItem?: OMDbSearchItem;
-  tmdbItem?: TMDBSearchItem;
-}
+
 
 export class MediaSearchModal extends Modal {
   private readonly plugin: MediaSearchPlugin;
@@ -91,73 +79,7 @@ export class MediaSearchModal extends Modal {
 
     try {
       const kind = this.kindSelect.value as MediaKind;
-      const items: UnifiedSearchResult[] = [];
-      const failures: string[] = [];
-      const providerIds = getEnabledProviderIds(this.plugin.settings);
-      for (const providerId of providerIds) {
-        try {
-          if (providerId === "kinopoisk") {
-            const key = this.plugin.settings.kinopoiskApiKey.trim();
-            if (!key) { failures.push("Kinopoisk: API key missing"); continue; }
-            const response = await new KinopoiskProvider(key).search(query);
-            const matches = (response.films ?? []).filter((item) => matchesKind(item, kind));
-            const filtered = this.plugin.settings.sfwFilter
-              ? matches.filter((item) => !isExplicitAdultContent(item))
-              : matches;
-            for (const item of filtered) items.push({
-              source: "kinopoisk",
-              id: String(item.filmId),
-              title: item.nameRu || item.nameEn || item.nameOriginal || "Untitled",
-              year: item.year ?? 0,
-              type: formatMediaType(item.type),
-              posterUrl: item.posterUrlPreview || item.posterUrl || "",
-              rating: item.rating,
-              kinopoiskItem: item,
-            });
-          } else if (providerId === "omdb") {
-            const key = this.plugin.settings.omdbApiKey.trim();
-            if (!key) { failures.push("OMDb: API key missing"); continue; }
-            const omdbType = kind === "movie" ? "movie" : kind === "series" ? "series" : undefined;
-            const response = await new OMDbProvider(key).search(query, 1, omdbType);
-            for (const item of response.Search ?? []) {
-              if (item.Type === "episode") continue;
-              if (kind === "movie" && item.Type !== "movie") continue;
-              if (kind === "series" && item.Type !== "series") continue;
-              if (this.plugin.settings.sfwFilter && isExplicitAdultContent({ filmId: 0, nameRu: item.Title })) continue;
-              const year = Number(item.Year.match(/\d{4}/)?.[0] ?? 0);
-              items.push({
-                source: "omdb",
-                id: item.imdbID,
-                title: item.Title,
-                year,
-                type: item.Type === "series" ? "TV series" : "Movie",
-                posterUrl: item.Poster !== "N/A" ? item.Poster : "",
-                omdbItem: item,
-              });
-            }
-          } else {
-            if (kind === "series") continue;
-            const key = this.plugin.settings.tmdbApiKey.trim();
-            if (!key) { failures.push("TMDB: API key missing"); continue; }
-            const response = await new TMDBProvider(key).search(query);
-            for (const item of response.results ?? []) {
-              if (this.plugin.settings.sfwFilter && isExplicitAdultContent({ filmId: 0, nameRu: item.title })) continue;
-              items.push({
-                source: "tmdb",
-                id: String(item.id),
-                title: item.title || item.original_title || "Untitled",
-                year: Number(item.release_date?.slice(0, 4) ?? 0),
-                type: "Movie",
-                posterUrl: new TMDBProvider(key).posterUrl(item.poster_path),
-                rating: item.vote_average,
-                tmdbItem: item,
-              });
-            }
-          }
-        } catch (error) {
-          failures.push(`${providerId === "kinopoisk" ? "Kinopoisk" : providerId === "omdb" ? "OMDb" : "TMDB"}: ${getErrorMessage(error)}`);
-        }
-      }
+      const { items, failures } = await searchMedia(query, kind, this.plugin.settings);
 
       this.resultsEl.empty();
       if (items.length === 0) {
@@ -465,16 +387,6 @@ export class MediaSearchModal extends Modal {
 }
 
 
-function getProviderApiKey(settings: BibliotekaSettings, providerId: MovieProviderId): string {
-  if (providerId === "kinopoisk") return settings.kinopoiskApiKey.trim();
-  if (providerId === "omdb") return settings.omdbApiKey.trim();
-  return settings.tmdbApiKey.trim();
-}
-
-export function getEnabledProviderIds(settings: BibliotekaSettings): MovieProviderId[] {
-  return settings.providerOrder.filter((id) => settings.enabledProviders[id] && Boolean(getProviderApiKey(settings, id)));
-}
-
 function getMovieFieldProperty(settings: BibliotekaSettings, field: MovieField): string {
   return settings.movieFields[field]?.property.trim() || MOVIE_FIELD_DEFAULTS[field].property;
 }
@@ -482,61 +394,6 @@ function getMovieFieldProperty(settings: BibliotekaSettings, field: MovieField):
 function getEnabledMovieFields(settings: BibliotekaSettings): MovieField[] {
   return MOVIE_FIELD_ORDER.filter((field) => settings.movieFields[field]?.enabled !== false);
 }
-
-/**
- * Metadata-based SFW filter.
- * This targets erotic/adult productions and explicit sexual descriptions,
- * not ordinary age-restricted movies or incidental mature themes.
- */
-function isExplicitAdultContent(item: KinopoiskSearchItem): boolean {
-  const genreNames = (item.genres ?? []).map((genre) =>
-    typeof genre === "string" ? genre : genre.genre ?? "",
-  );
-
-  const metadata = [
-    item.nameRu,
-    item.nameEn,
-    item.nameOriginal,
-    item.description,
-    ...genreNames,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .normalize("NFKC")
-    .toLocaleLowerCase();
-
-  // Kinopoisk does not consistently expose a dedicated "erotica" genre.
-  // Check titles, descriptions and any genre labels that are available.
-  const explicitTerms =
-    /(?:^|[^\p{L}\p{N}])(?:порно(?:граф\p{L}*)?|эротик\p{L}*|нимфоман\p{L}*|для\s+взрослых|xxx|хентай|hentai|porn(?:ography)?|erotic\p{L}*|nymphomaniac|nymphomania|sexploitation|softcore|hardcore|adult\s+(?:film|content))(?:$|[^\p{L}\p{N}])/iu;
-
-  const explicitPhrases =
-    /(?:откровенн\p{L}*\s+(?:сексуальн\p{L}*\s+)?сцен\p{L}*|сцен\p{L}*\s+(?:откровенного\s+)?секс\p{L}*|explicit\s+(?:sexual\s+)?content|graphic\s+sex(?:ual)?)/iu;
-
-  return explicitTerms.test(metadata) || explicitPhrases.test(metadata);
-}
-
-function matchesKind(item: KinopoiskSearchItem, kind: MediaKind): boolean {
-  if (kind === "all") return true;
-  const type = (item.type ?? "").toUpperCase();
-  const isSeries = type.includes("TV") || type.includes("SERIES");
-  return kind === "series" ? isSeries : !isSeries;
-}
-
-function formatMediaType(type?: string): string {
-  switch ((type ?? "").toUpperCase()) {
-    case "FILM":
-      return "Movie";
-    case "TV_SERIES":
-    case "MINI_SERIES":
-      return "TV series";
-    case "TV_SHOW":
-      return "TV show";
-    default:
-      return type ?? "";
-  }
-}
-
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
