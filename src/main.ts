@@ -1,6 +1,7 @@
 import { Notice, Plugin } from "obsidian";
 import { MovieField, MovieProviderId } from "./models/movie";
 import { refreshRatings } from "./services/rating-service";
+import { registerPosterCleanup } from "./services/poster-cleanup-service";
 import { MediaSearchModal } from "./ui/media-search-modal";
 import { getEnabledProviderIds } from "./services/media-search-service";
 import { DEFAULT_SETTINGS, BibliotekaSettings, MOVIE_FIELD_DEFAULTS, MOVIE_FIELD_ORDER, MovieFieldSetting } from "./settings";
@@ -11,6 +12,7 @@ export default class BibliotekaPlugin extends Plugin {
 
   async onload(): Promise<void> {
     await this.loadSettings();
+    registerPosterCleanup(this);
 
     this.addCommand({
       id: "add-media",
