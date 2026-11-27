@@ -2,6 +2,7 @@ import { App, Notice, TFile } from "obsidian";
 import { MovieField, MovieRecord, MovieProviderId } from "../models/movie";
 import { renderRatingsTable } from "./ratings-renderer";
 import { createMarkdownFile, saveRemoteImage } from "./note-file-service";
+import { renderMovieNote } from "./movie-note-renderer";
 
 type MovieFieldSetting = { enabled: boolean; property: string };
 
@@ -196,21 +197,16 @@ export async function createMovieNote(
   if (read("personalReview")) properties.personalReview = read("personalReview");
   if (localPosterPath) properties.poster = localPosterPath;
 
-  const frontmatter = Object.entries(properties)
-    .filter(([, value]) => value !== undefined && value !== null && value !== "")
-    .map(([key, value]) => `${yamlPropertyKey(key)}: ${yamlValue(value)}`)
-    .join("\n");
-  const body = [
-    `# ${title}`,
-    localPosterPath ? `![[${localPosterPath}]]` : "",
-    read("plot"),
-    ratings.length ? ["", "<!-- biblioteka:ratings:start -->", "## Ratings", "", renderRatingsTable(ratings), "<!-- biblioteka:ratings:end -->"].join("\n") : "",
-  ].filter(Boolean).join("\n\n");
-  const content = `---\n${frontmatter}\n---\n\n${body.trim()}\n`;
-
-  const fileName = renderFileNameTemplate(options.fileNameTemplate, title, read("year"));
-  const identity = sourceIds.kinopoisk || sourceIds.omdb || sourceIds.tmdb || "untitled";
-  const baseName = sanitizeFileName(fileName) || `media-${identity}`;
+  const { content, baseName } = renderMovieNote({
+    properties,
+    title,
+    posterPath: localPosterPath,
+    plot: read("plot"),
+    ratings,
+    fileNameTemplate: options.fileNameTemplate,
+    year: read("year"),
+    identity: sourceIds.kinopoisk || sourceIds.omdb || sourceIds.tmdb || "untitled",
+  });
   const { file, path: notePath } = await createMarkdownFile(app, folder, baseName, content);
   return { file, notePath };
 }
@@ -219,29 +215,3 @@ function isEmptyFieldValue(value: unknown): boolean {
   return value === undefined || value === null || value === ""
     || (Array.isArray(value) && value.length === 0);
 }
-
-function yamlPropertyKey(value: string): string {
-  return /^[A-Za-z_][A-Za-z0-9_-]*$/.test(value) ? value : JSON.stringify(value);
-}
-
-function yamlValue(value: unknown): string {
-  return JSON.stringify(value) ?? "null";
-}
-
-function renderFileNameTemplate(template: string, title: string, year: string): string {
-  return template
-    .replace(/\{\{\s*title\s*\}\}/gi, title)
-    .replace(/\{\{\s*year\s*\}\}/gi, year)
-    .replace(/\{\{[^{}]+\}\}/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function sanitizeFileName(value: string): string {
-  return value
-    .replace(/[\/:*?"<>|#^\[\]\\]/g, "")
-    .replace(/[. ]+$/g, "")
-    .replace(/\s+/g, " ")
-    .slice(0, 100);
-}
-
