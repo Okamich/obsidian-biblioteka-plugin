@@ -120,10 +120,3 @@ function getProviderDisplayName(providerId: MovieProviderId): string {
   return providerId === "kinopoisk" ? "Кинопоиск" : providerId === "omdb" ? "OMDb" : "TMDB";
 }
 
-function splitList(value: string): string[] {
-  return [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
-}
-
-function getProviderDisplayName(providerId: MovieProviderId): string {
-  return providerId === "kinopoisk" ? "Кинопоиск" : providerId === "omdb" ? "OMDb" : "TMDB";
-}
