@@ -9,7 +9,7 @@ export function registerPosterCleanup(plugin: Plugin): void {
     plugin.app.metadataCache.on("deleted", (file, previousCache) => {
       if (!(file instanceof TFile) || file.extension !== "md") return;
 
-      const posterValue = previousCache.frontmatter?.poster;
+      const posterValue = previousCache?.frontmatter?.poster;
       if (typeof posterValue !== "string" || !posterValue.trim()) return;
 
       void removePosterIfUnused(plugin, file.path, posterValue).catch((error) => {
