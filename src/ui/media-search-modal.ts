@@ -6,13 +6,12 @@ import { findDuplicateNotes } from "../services/duplicate-service";
 import { createMovieNote, updateExistingMovieNote } from "../services/movie-note-service";
 import { BibliotekaSettings, MOVIE_FIELD_DEFAULTS, MOVIE_FIELD_ORDER } from "../settings";
 import type { MediaKind } from "../providers/kinopoisk";
-import { searchMedia, UnifiedSearchResult } from "../services/media-search-service";
+import { searchMedia } from "../services/media-search-service";
+import type { UnifiedSearchResult } from "../services/media-search-service";
 
 interface MediaSearchPlugin extends Plugin {
   settings: BibliotekaSettings;
 }
-
-
 
 export class MediaSearchModal extends Modal {
   private readonly plugin: MediaSearchPlugin;
