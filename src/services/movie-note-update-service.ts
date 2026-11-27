@@ -1,0 +1,129 @@
+import { App, TFile } from "obsidian";
+import { MovieField, MovieRecord, MovieProviderId } from "../models/movie";
+import { renderRatingsTable } from "./ratings-renderer";
+
+type MovieFieldSetting = { enabled: boolean; property: string };
+type MovieFields = Record<string, string>;
+
+const MOVIE_FIELD_DEFAULTS: Record<MovieField, string> = {
+  title: "title",
+  originalTitle: "originalTitle",
+  year: "year",
+  genres: "genres",
+  countries: "countries",
+  plot: "plot",
+  director: "director",
+  writer: "writer",
+  duration: "duration",
+  studio: "studio",
+  actors: "actors",
+};
+
+const MOVIE_FIELD_ORDER: MovieField[] = [
+  "title", "originalTitle", "year", "genres", "countries", "plot",
+  "director", "writer", "duration", "studio", "actors",
+];
+
+export async function updateExistingMovieNote(
+  app: App,
+  file: TFile,
+  record: MovieRecord,
+  fields: MovieFields,
+  movieFields: Record<MovieField, MovieFieldSetting>,
+): Promise<void> {
+  const read = (key: string): string => fields[key] ?? "";
+  const sourceIds = { ...record.sourceIds };
+  const tags = splitList(read("tags"));
+  if (!tags.includes("Biblioteka")) tags.push("Biblioteka");
+  const candidate: Record<string, unknown> = {
+    type: record.type,
+    watched: read("watched"),
+    lastWatched: read("lastWatched"),
+    personalRating: read("personalRating") === "" ? undefined : Number(read("personalRating")),
+    personalReview: read("personalReview"),
+    tags,
+    source_ids: sourceIds,
+    sources: Object.keys(sourceIds).map((id) => getProviderDisplayName(id as MovieProviderId)),
+  };
+  const fieldValues: Record<MovieField, unknown> = {
+    title: read("title"),
+    originalTitle: read("originalTitle"),
+    year: Number(read("year")) || undefined,
+    genres: splitList(read("genres")),
+    countries: splitList(read("countries")),
+    plot: read("plot"),
+    director: splitList(read("director")),
+    writer: splitList(read("writer")),
+    duration: read("duration") === "" ? undefined : Number(read("duration")),
+    studio: splitList(read("studio")),
+    actors: splitList(read("actors")),
+  };
+  for (const field of MOVIE_FIELD_ORDER) {
+    const setting = movieFields[field];
+    if (setting.enabled && fields[field]) {
+      candidate[setting.property.trim() || MOVIE_FIELD_DEFAULTS[field]] = fieldValues[field];
+    }
+  }
+
+  await app.fileManager.processFrontMatter(file, (fm) => {
+    const existingIds = (fm.source_ids && typeof fm.source_ids === "object") ? fm.source_ids as Record<string, string> : {};
+    fm.source_ids = { ...sourceIds, ...existingIds };
+    const existingSources = Array.isArray(fm.sources) ? fm.sources as string[] : typeof fm.sources === "string" ? [fm.sources] : [];
+    fm.sources = [...new Set([...existingSources, ...Object.keys(sourceIds).map((id) => getProviderDisplayName(id as MovieProviderId))])];
+    for (const [key, value] of Object.entries(candidate)) {
+      if (key === "source_ids" || key === "sources" || key === "tags" || value === undefined || value === null || value === "") continue;
+      if (Array.isArray(value) && value.length === 0) continue;
+      const current = fm[key];
+      if (current === undefined || current === null || current === "") fm[key] = value;
+    }
+    const existingTags = Array.isArray(fm.tags) ? fm.tags as string[] : typeof fm.tags === "string" ? [fm.tags] : [];
+    fm.tags = [...new Set([...existingTags, ...tags, "Biblioteka"])];
+    if (record.ratings.length) fm.ratings = record.ratings;
+  });
+
+  const current = await app.vault.read(file);
+  let next = current;
+  const start = "<!-- biblioteka:ratings:start -->";
+  const end = "<!-- biblioteka:ratings:end -->";
+  if (record.ratings.length) {
+    const block = [start, "## Ratings", "", renderRatingsTable(record.ratings), end].join("\n");
+    const startIndex = next.indexOf(start);
+    const endIndex = next.indexOf(end);
+    if (startIndex >= 0 && endIndex > startIndex) next = next.slice(0, startIndex) + block + next.slice(endIndex + end.length);
+    else next = `${next.trimEnd()}\n\n${block}\n`;
+  }
+  const plot = movieFields.plot.enabled ? read("plot") : "";
+  if (plot) {
+    const body = next.replace(/^---\n[\s\S]*?\n---\n?/, "").trim();
+    const withoutManaged = body
+      .replace(/^# .*$/m, "")
+      .replace(/!\[\[[^\]]+\]\]/g, "")
+      .replace(/<!-- biblioteka:ratings:start -->[\s\S]*?<!-- biblioteka:ratings:end -->/g, "")
+      .trim();
+    if (!withoutManaged) {
+      const heading = `# ${read("title")}\n`;
+      const headingIndex = next.indexOf(heading);
+      if (headingIndex >= 0) {
+        const insertAt = headingIndex + heading.length;
+        next = `${next.slice(0, insertAt)}\n${plot}\n${next.slice(insertAt)}`;
+      } else next = `${next.trimEnd()}\n\n${plot}\n`;
+    }
+  }
+  if (next !== current) await app.vault.modify(file, next);
+}
+
+function splitList(value: string): string[] {
+  return [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
+}
+
+function getProviderDisplayName(providerId: MovieProviderId): string {
+  return providerId === "kinopoisk" ? "Кинопоиск" : providerId === "omdb" ? "OMDb" : "TMDB";
+}
+
+function splitList(value: string): string[] {
+  return [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
+}
+
+function getProviderDisplayName(providerId: MovieProviderId): string {
+  return providerId === "kinopoisk" ? "Кинопоиск" : providerId === "omdb" ? "OMDb" : "TMDB";
+}
