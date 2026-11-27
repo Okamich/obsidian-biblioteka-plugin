@@ -177,7 +177,7 @@ export class MediaSearchModal extends Modal {
         record.posterCandidates.push({ source: item.source, url: item.posterUrl });
       }
       if (failures.length) new Notice(`Some providers could not enrich this title: ${failures.join(" · ")}`);
-      this.showPreview(record);
+      this.showPreview(record, selectButton);
     } catch (error) {
       new Notice(`Could not load media details: ${getErrorMessage(error)}`);
       selectButton.disabled = false;
@@ -185,7 +185,7 @@ export class MediaSearchModal extends Modal {
     }
   }
 
-  private showPreview(record: MovieRecord): void {
+  private showPreview(record: MovieRecord, selectButton: HTMLButtonElement): void {
     this.controlsEl.hide();
     this.resultsEl.hide();
 
@@ -195,6 +195,8 @@ export class MediaSearchModal extends Modal {
         preview?.remove();
         this.controlsEl.show();
         this.resultsEl.show();
+        selectButton.disabled = false;
+        selectButton.setText("Select");
       },
       onCreate: (posterUrl, fields, button) => {
         void this.createNote(record, posterUrl, fields, button);
