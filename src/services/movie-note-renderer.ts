@@ -40,16 +40,16 @@ function yamlValue(value: unknown): string {
 
 function renderFileNameTemplate(template: string, title: string, year: string): string {
   return template
-    .replace(/\\{\\{\\s*title\\s*\\}\\}/gi, title)
-    .replace(/\\{\\{\\s*year\\s*\\}\\}/gi, year)
-    .replace(/\\{\\{[^{}]+\\}\\}/g, "")
-    .replace(/\\s+/g, " ")
+    .replace(/\{\{\s*title\s*\}\}/gi, title)
+    .replace(/\{\{\s*year\s*\}\}/gi, year)
+    .replace(/\{\{[^{}]+\}\}/g, "")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
 function sanitizeFileName(value: string): string {
   return value
-    .replace(/[\\/:*?"<>|#^\\[\\]\\\\]/g, "")
+    .replace(/[\/:*?"<>|#^\[\]\\]/g, "")
     .replace(/[. ]+$/g, "")
     .replace(/\\s+/g, " ")
     .slice(0, 100);
