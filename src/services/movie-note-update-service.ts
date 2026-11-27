@@ -24,6 +24,7 @@ const MOVIE_FIELD_ORDER: MovieField[] = [
   "director", "writer", "duration", "studio", "actors",
 ];
 
+/** Merge resolved media metadata into an existing note without overwriting user-authored values. */
 export async function updateExistingMovieNote(
   app: App,
   file: TFile,
