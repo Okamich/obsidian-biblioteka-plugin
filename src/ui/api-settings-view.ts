@@ -2,7 +2,7 @@ import { Notice, Setting, SettingGroup } from "obsidian";
 import { KinopoiskProvider } from "../providers/kinopoisk";
 import { OMDbProvider } from "../providers/omdb";
 import { TMDBProvider } from "../providers/tmdb";
-import { SettingsPlugin } from "./settings-tab";
+import { SettingsPlugin } from "./movie-settings-view";
 
 export function renderApiSettings(containerEl: HTMLElement, plugin: SettingsPlugin): void {
       const apiSection = containerEl.createEl("details", { cls: "biblioteka-settings-disclosure" });
