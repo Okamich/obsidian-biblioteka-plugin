@@ -1,7 +1,7 @@
 import { App, Plugin, PluginSettingTab, Setting, SettingGroup } from "obsidian";
-import { FolderSuggest } from "./folder-suggest";
 import { BibliotekaSettings } from "../settings";
 import { renderApiSettings } from "./api-settings-view";
+import { FolderSuggest } from "./folder-suggest";
 import { renderMovieSettings, SettingsPlugin } from "./movie-settings-view";
 
 export class BibliotekaSettingTab extends PluginSettingTab {
@@ -15,7 +15,6 @@ export class BibliotekaSettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
-
     containerEl.createEl("h2", { text: "Biblioteka" });
     containerEl.createEl("p", {
       text: "Media Library for Obsidian — development build.",
@@ -28,8 +27,7 @@ export class BibliotekaSettingTab extends PluginSettingTab {
       .setName("Library folder")
       .setDesc("Root folder for the media library. Default: Media.")
       .addText((text) => {
-        text
-          .setPlaceholder("Media")
+        text.setPlaceholder("Media")
           .setValue(this.plugin.settings.defaultMediaFolder)
           .onChange(async (value) => {
             this.plugin.settings.defaultMediaFolder = value.trim() || "Media";
@@ -41,14 +39,14 @@ export class BibliotekaSettingTab extends PluginSettingTab {
     new Setting(generalSection)
       .setName("NSFW filter")
       .setDesc("Hide explicitly pornographic and adult content. Ordinary 18+ movies remain visible.")
-      .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.sfwFilter)
-          .onChange(async (value) => {
-            this.plugin.settings.sfwFilter = value;
-            await this.plugin.saveSettings();
-          }),
-      );
+      .addToggle((toggle) => toggle
+        .setValue(this.plugin.settings.sfwFilter)
+        .onChange(async (value) => {
+          this.plugin.settings.sfwFilter = value;
+          await this.plugin.saveSettings();
+        }));
 
     renderApiSettings(containerEl, this.plugin);
-    renderMovieSe
+    renderMovieSettings(containerEl, this.app, this.plugin);
+  }
+}
