@@ -1,5 +1,5 @@
 import { App, TFile } from "obsidian";
-import { MovieField, MovieRecord, MovieProviderId } from "../models/movie";
+import { MovieField, MovieRecord, MovieProviderId, mergeMovieRatings } from "../models/movie";
 import { renderRatingsTable } from "./ratings-renderer";
 
 type MovieFieldSetting = { enabled: boolean; property: string };
@@ -66,6 +66,8 @@ export async function updateExistingMovieNote(
     }
   }
 
+  let mergedRatings = mergeMovieRatings(app.metadataCache.getFileCache(file)?.frontmatter?.ratings, record.ratings);
+
   await app.fileManager.processFrontMatter(file, (fm) => {
     const existingIds = (fm.source_ids && typeof fm.source_ids === "object") ? fm.source_ids as Record<string, string> : {};
     fm.source_ids = { ...sourceIds, ...existingIds };
@@ -79,7 +81,10 @@ export async function updateExistingMovieNote(
     }
     const existingTags = Array.isArray(fm.tags) ? fm.tags as string[] : typeof fm.tags === "string" ? [fm.tags] : [];
     fm.tags = [...new Set([...existingTags, ...tags, "Biblioteka"])];
-    if (record.ratings.length) fm.ratings = record.ratings;
+    if (record.ratings.length) {
+      mergedRatings = mergeMovieRatings(fm.ratings, record.ratings);
+      fm.ratings = mergedRatings;
+    }
   });
 
   const current = await app.vault.read(file);
@@ -87,7 +92,7 @@ export async function updateExistingMovieNote(
   const start = "<!-- biblioteka:ratings:start -->";
   const end = "<!-- biblioteka:ratings:end -->";
   if (record.ratings.length) {
-    const block = [start, "## Ratings", "", renderRatingsTable(record.ratings), end].join("\n");
+    const block = [start, "## Ratings", "", renderRatingsTable(mergedRatings), end].join("\n");
     const startIndex = next.indexOf(start);
     const endIndex = next.indexOf(end);
     if (startIndex >= 0 && endIndex > startIndex) next = next.slice(0, startIndex) + block + next.slice(endIndex + end.length);
