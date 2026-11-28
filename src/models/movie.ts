@@ -83,6 +83,48 @@ export function createEmptyMovieRecord(type: MovieRecord["type"] = "Фильм")
   };
 }
 
+/**
+ * Merge a partial provider response into ratings already stored on a note.
+ * A missing provider rating must never delete a previously known rating.
+ */
+export function mergeMovieRatings(existing: unknown, incoming: MovieRating[]): MovieRating[] {
+  const merged: MovieRating[] = Array.isArray(existing)
+    ? existing
+      .filter((item): item is MovieRating =>
+        Boolean(item)
+        && typeof item.source === "string"
+        && item.source.trim().length > 0
+        && typeof item.value === "number"
+        && Number.isFinite(item.value),
+      )
+      .map((item) => ({ ...item }))
+    : [];
+
+  for (const rating of incoming) {
+    if (!rating || typeof rating.source !== "string" || !rating.source.trim()
+      || typeof rating.value !== "number" || !Number.isFinite(rating.value)) continue;
+
+    const index = merged.findIndex(
+      (item) => item.source.toLocaleLowerCase() === rating.source.toLocaleLowerCase(),
+    );
+    if (index < 0) {
+      merged.push({ ...rating });
+      continue;
+    }
+
+    const current = merged[index];
+    merged[index] = {
+      ...current,
+      ...rating,
+      scale: rating.scale ?? current.scale,
+      votes: rating.votes ?? current.votes,
+      url: rating.url ?? current.url,
+    };
+  }
+
+  return merged;
+}
+
 function isMissing(value: unknown): boolean {
   if (value === null || value === undefined) return true;
   if (typeof value === "string") return value.trim().length === 0;
