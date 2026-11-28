@@ -4,9 +4,12 @@ import { resolveMovieRecord } from "../providers/movie-resolver";
 import { DuplicateWarningModal } from "./duplicate-warning-modal";
 import { renderMoviePreview } from "./movie-preview-view";
 import type { MoviePreviewFields } from "./movie-preview-view";
-import { findDuplicateNotes } from "../services/duplicate-service";
-import { createMovieNote } from "../services/movie-note-service";
-import { updateExistingMovieNote } from "../services/movie-note-update-service";
+import {
+  collectMovieNoteValues,
+  createMovieNoteFromPreview,
+  findMovieNoteDuplicates,
+  updateMovieNoteFromPreview,
+} from "../services/movie-note-workflow-service";
 import { BibliotekaSettings, MOVIE_FIELD_DEFAULTS, MOVIE_FIELD_ORDER } from "../settings";
 import type { MediaKind } from "../providers/kinopoisk";
 import { searchMedia } from "../services/media-search-service";
@@ -124,9 +127,7 @@ export class MediaSearchModal extends Modal {
     }
 
     const info = row.createDiv({ cls: "biblioteka-result-info" });
-    info.createEl("strong", {
-      text: item.title,
-    });
+    info.createEl("strong", { text: item.title });
     const details = [
       item.year ? String(item.year) : "",
       item.type,
@@ -212,10 +213,7 @@ export class MediaSearchModal extends Modal {
     button: HTMLButtonElement,
     skipDuplicateCheck = false,
   ): Promise<void> {
-    const values: Record<string, string> = {};
-    for (const [key, field] of Object.entries(fields)) {
-      values[key] = field.value.trim();
-    }
+    const values = collectMovieNoteValues(fields);
     const title = values.title ?? "";
     if (!title) {
       new Notice("A title is required to create a note.");
@@ -226,20 +224,8 @@ export class MediaSearchModal extends Modal {
     button.disabled = true;
     button.setText(skipDuplicateCheck ? "Creating…" : "Checking duplicates…");
     try {
-      const year = Number(values.year) || 0;
-      const sourceIds = { ...record.sourceIds };
-
       if (!skipDuplicateCheck) {
-        const duplicates = await findDuplicateNotes(
-          this.app,
-          this.plugin.settings.moviesFolder,
-          sourceIds,
-          title,
-          year,
-          record.type,
-          getMovieFieldProperty(this.plugin.settings, "title"),
-          getMovieFieldProperty(this.plugin.settings, "year"),
-        );
+        const duplicates = await findMovieNoteDuplicates(this.app, this.plugin.settings, record, values);
         if (duplicates.length > 0) {
           new DuplicateWarningModal(
             this.app,
@@ -251,7 +237,7 @@ export class MediaSearchModal extends Modal {
             async (file) => {
               button.setText("Updating…");
               try {
-                await updateExistingMovieNote(this.app, file, record, values, this.plugin.settings.movieFields);
+                await updateMovieNoteFromPreview(this.app, file, record, values, this.plugin.settings);
                 new Notice(`Updated: ${file.path}`);
                 this.close();
               } catch (error) {
@@ -271,16 +257,12 @@ export class MediaSearchModal extends Modal {
       }
 
       button.setText("Creating…");
-      const { file, notePath } = await createMovieNote(
+      const { file, notePath } = await createMovieNoteFromPreview(
         this.app,
         record,
         values,
         posterUrl,
-        {
-          moviesFolder: this.plugin.settings.moviesFolder,
-          fileNameTemplate: this.plugin.settings.movieFileNameTemplate,
-          movieFields: this.plugin.settings.movieFields,
-        },
+        this.plugin.settings,
       );
       await this.app.workspace.getLeaf(false).openFile(file);
       new Notice(`Created: ${notePath}`);
@@ -295,11 +277,6 @@ export class MediaSearchModal extends Modal {
   onClose(): void {
     this.contentEl.empty();
   }
-}
-
-
-function getMovieFieldProperty(settings: BibliotekaSettings, field: MovieField): string {
-  return settings.movieFields[field]?.property.trim() || MOVIE_FIELD_DEFAULTS[field].property;
 }
 
 function getEnabledMovieFields(settings: BibliotekaSettings): MovieField[] {
