@@ -1,5 +1,5 @@
 import { App, Notice } from "obsidian";
-import { MovieField, MovieProviderId } from "../models/movie";
+import { MovieField, MovieProviderId, mergeMovieRatings } from "../models/movie";
 import { resolveMovieRecord } from "../providers/movie-resolver";
 import { normalizeMediaType } from "./duplicate-service";
 import { renderRatingsTable } from "./ratings-renderer";
@@ -56,8 +56,10 @@ export async function refreshRatings(app: App, settings: BibliotekaSettings): Pr
       );
       if (record.ratings.length === 0) continue;
 
+      let mergedRatings = mergeMovieRatings(fm.ratings, record.ratings);
       await app.fileManager.processFrontMatter(file, (frontmatter) => {
-        frontmatter.ratings = record.ratings;
+        mergedRatings = mergeMovieRatings(frontmatter.ratings, record.ratings);
+        frontmatter.ratings = mergedRatings;
         const existingIds = (frontmatter.source_ids && typeof frontmatter.source_ids === "object")
           ? frontmatter.source_ids as Record<string, string>
           : {};
@@ -68,7 +70,7 @@ export async function refreshRatings(app: App, settings: BibliotekaSettings): Pr
       const current = await app.vault.read(file);
       const start = "<!-- biblioteka:ratings:start -->";
       const end = "<!-- biblioteka:ratings:end -->";
-      const block = [start, "## Ratings", "", renderRatingsTable(record.ratings), end].join("\n");
+      const block = [start, "## Ratings", "", renderRatingsTable(mergedRatings), end].join("\n");
       const startIndex = current.indexOf(start);
       const endIndex = current.indexOf(end);
       const next = startIndex >= 0 && endIndex > startIndex
