@@ -5,12 +5,14 @@
   "description": "Biblioteka — Media Library for Obsidian",
   "scripts": {
     "dev": "node esbuild.config.mjs",
-    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production"
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "esbuild": "^0.24.2",
     "obsidian": "^1.11.0",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.4"
   }
 }
